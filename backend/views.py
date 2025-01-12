@@ -9,11 +9,22 @@ from .serializers import RegisterSerializer, UserSerializer
 from django.core.exceptions import ValidationError
 from django.contrib.auth import logout
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
-from django.core.mail import send_mail
-from django.conf import settings
 import random
-import redis
 from datetime import timedelta
+import yagmail
+import random
+from django.core.cache import cache
+from rest_framework import status
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth import get_user_model
+from .serializers import (
+    PasswordResetRequestSerializer, 
+    VerifyResetCodeSerializer, 
+    PasswordResetConfirmSerializer
+)
+
+CustomUser = get_user_model()
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -122,103 +133,145 @@ def logout_user(request):
     from rest_framework import status
 
 
-# Initialize Redis connection
-redis_client = redis.Redis(host='localhost', port=6379, db=0)
+# Email configuration
+username = "yvangodimomo@gmail.com"
+password = "pzls apph esje cgdl"
+yag = yagmail.SMTP(username, password)
+
+def generate_reset_code():
+    return ''.join([str(random.randint(0, 9)) for _ in range(6)])
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def request_password_reset(request):
-    serializer = PasswordResetRequestSerializer(data=request.data)
-    if serializer.is_valid():
-        email = serializer.validated_data['email']
-        
-        try:
-            user = CustomUser.objects.get(email=email)
+    try:
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
             
-            # Generate 6-digit code
-            reset_code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+            # Check if user exists
+            try:
+                user = CustomUser.objects.get(email=email)
+            except CustomUser.DoesNotExist:
+                return Response(
+                    {'error': 'No account found with this email'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
             
-            # Store code in Redis with 10-minute expiration
-            redis_key = f"password_reset_{email}"
-            redis_client.setex(redis_key, timedelta(minutes=10), reset_code)
+            # Generate and store reset code
+            reset_code = generate_reset_code()
+            cache_key = f'password_reset_{email}'
+            cache.set(cache_key, reset_code, timeout=300)  # 5 minutes expiry
             
-            # Send email with reset code
-            send_mail(
-                'Password Reset Code',
-                f'Your password reset code is: {reset_code}. This code will expire in 10 minutes.',
-                settings.DEFAULT_FROM_EMAIL,
-                [email],
-                fail_silently=False,
-            )
+            # Send email
+            subject = "Password Reset Code"
+            contents = [
+                f"Your password reset code is: {reset_code}",
+                "This code will expire in 5 minutes.",
+                "If you didn't request this reset, please ignore this email."
+            ]
+            
+            yag.send(to=email, subject=subject, contents=contents)
             
             return Response({
-                'message': 'Password reset code has been sent to your email'
-            }, status=status.HTTP_200_OK)
-            
-        except CustomUser.DoesNotExist:
-            # Return success even if email doesn't exist for security
-            return Response({
-                'message': 'If an account exists with this email, a reset code will be sent.'
-            }, status=status.HTTP_200_OK)
-            
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                'message': 'Reset code sent successfully',
+                'email': email
+            })
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def verify_reset_code(request):
-    serializer = VerifyResetCodeSerializer(data=request.data)
-    if serializer.is_valid():
-        email = serializer.validated_data['email']
-        submitted_code = serializer.validated_data['code']
-        
-        # Get code from Redis
-        redis_key = f"password_reset_{email}"
-        stored_code = redis_client.get(redis_key)
-        
-        if stored_code and stored_code.decode() == submitted_code:
-            return Response({
-                'message': 'Code verified successfully'
-            }, status=status.HTTP_200_OK)
-        
-        return Response({
-            'error': 'Invalid or expired code'
-        }, status=status.HTTP_400_BAD_REQUEST)
-        
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        serializer = VerifyResetCodeSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
+            submitted_code = serializer.validated_data['code']
+            
+            # Get stored code
+            cache_key = f'password_reset_{email}'
+            stored_code = cache.get(cache_key)
+            
+            if not stored_code:
+                return Response(
+                    {'error': 'Reset code has expired'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if submitted_code != stored_code:
+                return Response(
+                    {'error': 'Invalid reset code'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            return Response({'message': 'Code verified successfully'})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def reset_password(request):
-    serializer = PasswordResetSerializer(data=request.data)
-    if serializer.is_valid():
-        email = serializer.validated_data['email']
-        submitted_code = serializer.validated_data['code']
-        new_password = serializer.validated_data['new_password']
-        
-        # Verify code from Redis
-        redis_key = f"password_reset_{email}"
-        stored_code = redis_client.get(redis_key)
-        
-        if not stored_code or stored_code.decode() != submitted_code:
-            return Response({
-                'error': 'Invalid or expired code'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            user = CustomUser.objects.get(email=email)
-            user.set_password(new_password)
-            user.save()
+    try:
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
+            submitted_code = serializer.validated_data['code']
+            new_password = serializer.validated_data['new_password']
             
-            # Delete the reset code from Redis
-            redis_client.delete(redis_key)
+            # Verify code again
+            cache_key = f'password_reset_{email}'
+            stored_code = cache.get(cache_key)
             
-            return Response({
-                'message': 'Password reset successful'
-            }, status=status.HTTP_200_OK)
+            if not stored_code or submitted_code != stored_code:
+                return Response(
+                    {'error': 'Invalid or expired reset code'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
-        except CustomUser.DoesNotExist:
-            return Response({
-                'error': 'User not found'
-            }, status=status.HTTP_404_NOT_FOUND)
-            
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            # Get user and update password
+            try:
+                user = CustomUser.objects.get(email=email)
+                validate_password(new_password, user)
+                user.set_password(new_password)
+                user.save()
+                
+                # Clear the reset code
+                cache.delete(cache_key)
+                
+                # Send confirmation email
+                subject = "Password Reset Successful"
+                contents = [
+                    "Your password has been successfully reset.",
+                    "If you didn't make this change, please contact support immediately."
+                ]
+                yag.send(to=email, subject=subject, contents=contents)
+                
+                return Response({'message': 'Password reset successful'})
+            except CustomUser.DoesNotExist:
+                return Response(
+                    {'error': 'User not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            except ValidationError as e:
+                return Response(
+                    {'error': e.messages},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+
+    

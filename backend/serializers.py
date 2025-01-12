@@ -2,7 +2,6 @@ from rest_framework import serializers
 from .models import CustomUser
 from rest_framework import serializers
 from .models import CustomUser
-from django.contrib.auth.password_validation import validate_password
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -42,6 +41,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         )
         return user
 
+
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
@@ -49,16 +49,13 @@ class VerifyResetCodeSerializer(serializers.Serializer):
     email = serializers.EmailField()
     code = serializers.CharField(min_length=6, max_length=6)
 
-class PasswordResetSerializer(serializers.Serializer):
+class PasswordResetConfirmSerializer(serializers.Serializer):
     email = serializers.EmailField()
     code = serializers.CharField(min_length=6, max_length=6)
-    new_password = serializers.CharField(write_only=True)
-    confirm_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(min_length=8)
+    confirm_password = serializers.CharField(min_length=8)
 
-    def validate(self, attrs):
-        if attrs['new_password'] != attrs['confirm_password']:
-            raise serializers.ValidationError({"password": "Password fields didn't match."})
-        
-        # Validate password strength
-        validate_password(attrs['new_password'])
-        return attrs
+    def validate(self, data):
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError("Passwords do not match")
+        return data
