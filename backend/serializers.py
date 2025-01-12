@@ -1,5 +1,9 @@
 from rest_framework import serializers
 from .models import CustomUser
+from rest_framework import serializers
+from .models import CustomUser
+from django.contrib.auth.password_validation import validate_password
+
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -13,21 +17,48 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = CustomUser
         fields = ('email', 'password', 'password2', 'full_name', 'phone_number', 
                  'user_type', 'username')
-        extra_kwargs = {'password': {'write_only': True}}
+        extra_kwargs = {
+            'password': {'write_only': True},
+            'email': {'required': True},
+            'full_name': {'required': True},
+            'phone_number': {'required': True},
+            'user_type': {'required': True},
+        }
     
     def validate(self, attrs):
         if attrs['password'] != attrs['password2']:
-            raise serializers.ValidationError("Passwords don't match")
+            raise serializers.ValidationError({"password": "Passwords don't match"})
         return attrs
     
     def create(self, validated_data):
         validated_data.pop('password2')
+        username = validated_data.pop('username', None)
+        if not username:
+            username = validated_data['email']  # Use email as username if not provided
+            
         user = CustomUser.objects.create_user(
-            email=validated_data['email'],
-            username=validated_data['username'],
-            password=validated_data['password'],
-            full_name=validated_data['full_name'],
-            phone_number=validated_data['phone_number'],
-            user_type=validated_data['user_type']
+            username=username,
+            **validated_data
         )
         return user
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+class VerifyResetCodeSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.CharField(min_length=6, max_length=6)
+
+class PasswordResetSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.CharField(min_length=6, max_length=6)
+    new_password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['confirm_password']:
+            raise serializers.ValidationError({"password": "Password fields didn't match."})
+        
+        # Validate password strength
+        validate_password(attrs['new_password'])
+        return attrs
