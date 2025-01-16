@@ -23,6 +23,12 @@ from .serializers import (
     PasswordResetConfirmSerializer
 )
 
+from rest_framework.views import APIView
+from .serializers import ContactSerializer, NewsletterSerializer
+from django.core.mail import send_mail
+from django.conf import settings
+
+
 CustomUser = get_user_model()
 
 
@@ -274,4 +280,41 @@ def reset_password(request):
         )
     
 
+class ContactView(APIView):
+    def post(self, request):
+        serializer = ContactSerializer(data=request.data)
+        if serializer.is_valid():
+            contact = serializer.save()
+            
+            # Send email notification
+            send_mail(
+                subject=f'New Contact Form Submission: {contact.subject}',
+                message=f'Name: {contact.name}\nEmail: {contact.email}\nMessage: {contact.message}',
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[settings.ADMIN_EMAIL],
+                fail_silently=False,
+            )
+            
+            return Response(
+                {'message': 'Message sent successfully'},
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class NewsletterView(APIView):
+    def post(self, request):
+        serializer = NewsletterSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                serializer.save()
+                return Response(
+                    {'message': 'Successfully subscribed to newsletter'},
+                    status=status.HTTP_201_CREATED
+                )
+            except:
+                return Response(
+                    {'message': 'This email is already subscribed'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     

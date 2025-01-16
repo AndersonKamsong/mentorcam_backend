@@ -1,5 +1,7 @@
 from django.urls import path
 from . import views
+from .views import ContactView, NewsletterView
+
 
 urlpatterns = [
     path('register/', views.register_user, name='register'),
@@ -8,5 +10,10 @@ urlpatterns = [
     path('password/reset/request/', views.request_password_reset, name='request-password-reset'),
     path('password/reset/verify/', views.verify_reset_code, name='verify-reset-code'),
     path('password/reset/confirm/', views.reset_password, name='reset-password'),
+    path('contact/', ContactView.as_view(), name='contact'),
+    path('newsletter/', NewsletterView.as_view(), name='newsletter'),
+
+
+    
 
 ]
