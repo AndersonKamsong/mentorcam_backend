@@ -15,10 +15,15 @@ class CustomUser(AbstractUser):
     full_name = models.CharField(max_length=255)
     phone_number = models.CharField(max_length=20)
     user_type = models.CharField(max_length=20, choices=USER_TYPES, default='amateur')
+    last_logout = models.DateTimeField(null=True, blank=True)
+
     
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username', 'full_name']
 
+def record_logout(self):
+        self.last_logout = timezone.now()
+        self.save(update_fields=['last_logout'])
 
 
 class Contact(models.Model):

@@ -1,4 +1,3 @@
-from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -14,7 +13,7 @@ from datetime import timedelta
 import yagmail
 import random
 from django.core.cache import cache
-from rest_framework import status
+from rest_framework import status, viewsets
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
 from .serializers import (
@@ -27,6 +26,11 @@ from rest_framework.views import APIView
 from .serializers import ContactSerializer, NewsletterSerializer
 from django.core.mail import send_mail
 from django.conf import settings
+from rest_framework.decorators import action
+from django.shortcuts import get_object_or_404
+from .models import CustomUser
+from rest_framework.permissions import BasePermission
+from django.db.models import Q
 
 
 CustomUser = get_user_model()
@@ -136,7 +140,6 @@ def logout_user(request):
         )
     
 
-    from rest_framework import status
 
 
 # Email configuration
@@ -318,3 +321,67 @@ class NewsletterView(APIView):
                 )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
+
+    from rest_framework import status, viewsets
+
+class IsAdminUser(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.user_type == 'admin'
+
+class UserViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    serializer_class = UserSerializer
+
+    def list(self, request):
+        """Get all users"""
+        queryset = CustomUser.objects.all()
+        
+        # Handle search functionality
+        search_term = request.query_params.get('search', '')
+        if search_term:
+            queryset = queryset.filter(
+                Q(email__icontains=search_term) |
+                Q(username__icontains=search_term) |
+                Q(full_name__icontains=search_term)
+            )
+            
+        serializer = self.serializer_class(queryset, many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        """Create a new user"""
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def retrieve(self, request, pk=None):
+        """Get a specific user"""
+        user = get_object_or_404(CustomUser, pk=pk)
+        serializer = self.serializer_class(user)
+        return Response(serializer.data)
+
+    def update(self, request, pk=None):
+        """Update a user"""
+        user = get_object_or_404(CustomUser, pk=pk)
+        serializer = self.serializer_class(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, pk=None):
+        """Delete a user"""
+        user = get_object_or_404(CustomUser, pk=pk)
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['patch'])
+    def toggle_active(self, request, pk=None):
+        """Toggle user active status"""
+        user = get_object_or_404(CustomUser, pk=pk)
+        user.is_active = not user.is_active
+        user.save()
+        serializer = self.serializer_class(user)
+        return Response(serializer.data)
