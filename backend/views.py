@@ -99,46 +99,54 @@ def login_user(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+from django.core.exceptions import ObjectDoesNotExist
+
 @api_view(['POST'])
-@authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
 def logout_user(request):
     try:
-        # Get the refresh token from request
+        # Get the refresh token
         refresh_token = request.data.get('refresh_token')
-        if not refresh_token:
-            return Response(
-                {'error': 'Refresh token is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Blacklist the refresh token
-        token = RefreshToken(refresh_token)
-        token.blacklist()
         
-        # Get all outstanding tokens for the user and blacklist them
-        outstanding_tokens = OutstandingToken.objects.filter(user_id=request.user.id)
-        for token in outstanding_tokens:
-            BlacklistedToken.objects.get_or_create(token=token)
-
-        # Logout the user from the current session
+        try:
+            # Record logout time - wrapped in try/except in case method fails
+            if hasattr(request.user, 'record_logout'):
+                request.user.record_logout()
+        except Exception as e:
+            print(f"Error recording logout time: {str(e)}")
+            # Continue with logout even if recording fails
+            pass
+        
+        if refresh_token:
+            try:
+                # Blacklist the refresh token
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            except TokenError:
+                # Continue with logout even if token blacklisting fails
+                pass
+        
+        # Perform Django logout
         logout(request)
         
         return Response(
-            {'message': 'Successfully logged out and invalidated all sessions'},
+            {'message': 'Successfully logged out'},
             status=status.HTTP_200_OK
         )
-    except TokenError as e:
+    except Exception as e:
+        print(f"Logout error: {str(e)}")  # Log the actual error
         return Response(
-            {'error': 'Invalid or expired token'},
+            {'error': 'Logout failed. Please try again.'},
             status=status.HTTP_400_BAD_REQUEST
         )
-    except Exception as e:
-        return Response(
-            {'error': str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
     
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_current_user(request):
+    serializer = UserSerializer(request.user)
+    return Response(serializer.data)
 
 
 

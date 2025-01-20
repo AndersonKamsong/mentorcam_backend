@@ -22,8 +22,8 @@ class CustomUser(AbstractUser):
     REQUIRED_FIELDS = ['username', 'full_name']
 
 def record_logout(self):
-        self.last_logout = timezone.now()
-        self.save(update_fields=['last_logout'])
+    self.last_logout = timezone.now()
+    self.save(update_fields=['last_logout'])
 
 
 class Contact(models.Model):

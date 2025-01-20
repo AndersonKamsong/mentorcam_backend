@@ -12,6 +12,8 @@ urlpatterns = [
     path('register/', views.register_user, name='register'),
     path('login/', views.login_user, name='login'),
     path('logout/', views.logout_user, name='logout'),
+    path('current-user/', views.get_current_user, name='current-user'),
+
     
     # Password reset URLs
     path('password/reset/request/', views.request_password_reset, name='request-password-reset'),

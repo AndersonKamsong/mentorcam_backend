@@ -1,1 +1,3 @@
-install pip install djangorestframework djangorestframework-simplejwt django-cors-headers and django
+
+link to the backend : https://github.com/momogodi2000/mentorcam_backend.git
+
