@@ -23,6 +23,10 @@ urlpatterns = [
     # Contact and Newsletter URLs
     path('contact/', ContactView.as_view(), name='contact'),
     path('newsletter/', NewsletterView.as_view(), name='newsletter'),
+
+
+    path('professional-profile/', views.professional_profile, name='professional-profile'),
+
     
     # Include the router URLs
     path('', include(router.urls)),

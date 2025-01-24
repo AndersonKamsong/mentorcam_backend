@@ -4,7 +4,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.contrib.auth import authenticate
-from .serializers import RegisterSerializer, UserSerializer
+from .serializers import ProfessionalProfileSerializer, RegisterSerializer, UserSerializer
 from django.core.exceptions import ValidationError
 from django.contrib.auth import logout
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
@@ -28,9 +28,16 @@ from django.core.mail import send_mail
 from django.conf import settings
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
-from .models import CustomUser
+from .models import CustomUser, ProfessionalProfile
 from rest_framework.permissions import BasePermission
 from django.db.models import Q
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+from django.core.exceptions import ObjectDoesNotExist
+
+from rest_framework.decorators import api_view, permission_classes
+from django.contrib.auth import logout
+from rest_framework_simplejwt.exceptions import TokenError
+from django.shortcuts import get_object_or_404
 
 
 CustomUser = get_user_model()
@@ -99,8 +106,6 @@ def login_user(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-from rest_framework_simplejwt.tokens import RefreshToken, TokenError
-from django.core.exceptions import ObjectDoesNotExist
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -393,3 +398,53 @@ class UserViewSet(viewsets.ViewSet):
         user.save()
         serializer = self.serializer_class(user)
         return Response(serializer.data)
+    
+
+class IsProfessional(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.user_type == 'professional'
+    
+import logging
+
+logger = logging.getLogger(__name__)
+
+@api_view(['GET', 'POST', 'PUT'])
+@permission_classes([IsAuthenticated, IsProfessional])
+def professional_profile(request):
+    try:
+        logger.debug(f"Request method: {request.method}")
+        logger.debug(f"Request user: {request.user}")
+        logger.debug(f"Request data: {request.data}")
+
+        if request.method == 'GET':
+            profile = get_object_or_404(ProfessionalProfile, user=request.user)
+            serializer = ProfessionalProfileSerializer(profile)
+            return Response(serializer.data)
+
+        elif request.method == 'POST':
+            if ProfessionalProfile.objects.filter(user=request.user).exists():
+                return Response(
+                    {'error': 'Profile already exists. Use PUT to update.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            serializer = ProfessionalProfileSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save(user=request.user)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        elif request.method == 'PUT':
+            profile = get_object_or_404(ProfessionalProfile, user=request.user)
+            serializer = ProfessionalProfileSerializer(profile, data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        logger.error(f"Error in professional_profile view: {str(e)}", exc_info=True)
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

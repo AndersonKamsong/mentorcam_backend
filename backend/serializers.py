@@ -1,7 +1,5 @@
 from rest_framework import serializers
-from .models import CustomUser
-from rest_framework import serializers
-from .models import CustomUser
+from .models import Certification, CustomUser, Domain, Education, MentorshipPlan, ProfessionalProfile
 from .models import Contact, Newsletter
 
 
@@ -71,3 +69,92 @@ class NewsletterSerializer(serializers.ModelSerializer):
     class Meta:
         model = Newsletter
         fields = ['email']
+
+
+from rest_framework import serializers
+
+class DomainSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Domain
+        exclude = ('profile',)
+
+class EducationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Education
+        exclude = ('profile',)
+
+class CertificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Certification
+        exclude = ('profile',)
+
+class MentorshipPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MentorshipPlan
+        exclude = ('profile',)
+
+class ProfessionalProfileSerializer(serializers.ModelSerializer):
+    domains = DomainSerializer(many=True)
+    education = EducationSerializer(many=True)
+    certifications = CertificationSerializer(many=True)
+    mentorship_plans = MentorshipPlanSerializer(many=True)
+
+    class Meta:
+        model = ProfessionalProfile
+        exclude = ('user',)
+
+    def create(self, validated_data):
+        domains_data = validated_data.pop('domains', [])
+        education_data = validated_data.pop('education', [])
+        certifications_data = validated_data.pop('certifications', [])
+        mentorship_plans_data = validated_data.pop('mentorship_plans', [])
+
+        profile = ProfessionalProfile.objects.create(**validated_data)
+
+        for domain_data in domains_data:
+            Domain.objects.create(profile=profile, **domain_data)
+        
+        for edu_data in education_data:
+            Education.objects.create(profile=profile, **edu_data)
+        
+        for cert_data in certifications_data:
+            Certification.objects.create(profile=profile, **cert_data)
+        
+        for plan_data in mentorship_plans_data:
+            MentorshipPlan.objects.create(profile=profile, **plan_data)
+
+        return profile
+
+    def update(self, instance, validated_data):
+        # Handle nested updates
+        domains_data = validated_data.pop('domains', None)
+        education_data = validated_data.pop('education', None)
+        certifications_data = validated_data.pop('certifications', None)
+        mentorship_plans_data = validated_data.pop('mentorship_plans', None)
+
+        # Update main profile fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if domains_data is not None:
+            instance.domains.all().delete()
+            for domain_data in domains_data:
+                Domain.objects.create(profile=instance, **domain_data)
+
+        if education_data is not None:
+            instance.education.all().delete()
+            for edu_data in education_data:
+                Education.objects.create(profile=instance, **edu_data)
+
+        if certifications_data is not None:
+            instance.certifications.all().delete()
+            for cert_data in certifications_data:
+                Certification.objects.create(profile=instance, **cert_data)
+
+        if mentorship_plans_data is not None:
+            instance.mentorship_plans.all().delete()
+            for plan_data in mentorship_plans_data:
+                MentorshipPlan.objects.create(profile=instance, **plan_data)
+
+        return instance
