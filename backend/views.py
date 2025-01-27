@@ -408,26 +408,36 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+from .models import ProfessionalProfile
+from .serializers import ProfessionalProfileSerializer
+
 @api_view(['GET', 'POST', 'PUT'])
-@permission_classes([IsAuthenticated, IsProfessional])
+@permission_classes([IsAuthenticated])
 def professional_profile(request):
     try:
-        logger.debug(f"Request method: {request.method}")
-        logger.debug(f"Request user: {request.user}")
-        logger.debug(f"Request data: {request.data}")
-
         if request.method == 'GET':
-            profile = get_object_or_404(ProfessionalProfile, user=request.user)
-            serializer = ProfessionalProfileSerializer(profile)
-            return Response(serializer.data)
+            # Try to fetch the profile, or return an empty response if it doesn't exist
+            profile = ProfessionalProfile.objects.filter(user=request.user).first()
+            if profile:
+                serializer = ProfessionalProfileSerializer(profile)
+                return Response(serializer.data)
+            else:
+                return Response({}, status=status.HTTP_200_OK)
 
         elif request.method == 'POST':
+            # Check if a profile already exists for the user
             if ProfessionalProfile.objects.filter(user=request.user).exists():
                 return Response(
                     {'error': 'Profile already exists. Use PUT to update.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+            # Create a new profile
             serializer = ProfessionalProfileSerializer(data=request.data)
             if serializer.is_valid():
                 serializer.save(user=request.user)
@@ -435,7 +445,8 @@ def professional_profile(request):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         elif request.method == 'PUT':
-            profile = get_object_or_404(ProfessionalProfile, user=request.user)
+            # Try to fetch the profile, or create a new one if it doesn't exist
+            profile, created = ProfessionalProfile.objects.get_or_create(user=request.user)
             serializer = ProfessionalProfileSerializer(profile, data=request.data)
             if serializer.is_valid():
                 serializer.save()
@@ -443,8 +454,29 @@ def professional_profile(request):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     except Exception as e:
-        logger.error(f"Error in professional_profile view: {str(e)}", exc_info=True)
         return Response(
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+    # views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import ProfessionalProfile
+from .serializers import ProfessionalProfileSerializer
+
+class ProfessionalProfileSearchView(APIView):
+    def get(self, request):
+        domain = request.query_params.get('domain', '').strip().lower()
+        if not domain:
+            return Response(
+                {"error": "Domain parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Search for mentors whose domains match the query
+        mentors = ProfessionalProfile.objects.filter(domains__icontains=domain)
+        serializer = ProfessionalProfileSerializer(mentors, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)

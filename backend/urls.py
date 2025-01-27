@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import ContactView, NewsletterView
+from .views import ContactView, NewsletterView, ProfessionalProfileSearchView
 
 # Create a router and register the UserViewSet
 router = DefaultRouter()
@@ -26,6 +26,8 @@ urlpatterns = [
 
 
     path('professional-profile/', views.professional_profile, name='professional-profile'),
+    path('professional-profile/search/', ProfessionalProfileSearchView.as_view(), name='professional-profile-search'),
+
 
     
     # Include the router URLs

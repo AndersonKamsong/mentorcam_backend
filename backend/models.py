@@ -63,6 +63,9 @@ class ProfessionalProfile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def __str__(self):
+        return f"{self.user.full_name}'s Profile"
+    
 class Domain(models.Model):
     profile = models.ForeignKey(ProfessionalProfile, on_delete=models.CASCADE, related_name='domains')
     name = models.CharField(max_length=255)

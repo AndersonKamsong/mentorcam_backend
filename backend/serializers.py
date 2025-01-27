@@ -70,7 +70,6 @@ class NewsletterSerializer(serializers.ModelSerializer):
         model = Newsletter
         fields = ['email']
 
-
 from rest_framework import serializers
 
 class DomainSerializer(serializers.ModelSerializer):
@@ -92,16 +91,23 @@ class MentorshipPlanSerializer(serializers.ModelSerializer):
     class Meta:
         model = MentorshipPlan
         exclude = ('profile',)
-
 class ProfessionalProfileSerializer(serializers.ModelSerializer):
-    domains = DomainSerializer(many=True)
-    education = EducationSerializer(many=True)
-    certifications = CertificationSerializer(many=True)
-    mentorship_plans = MentorshipPlanSerializer(many=True)
+    full_name = serializers.CharField(source='user.full_name', read_only=True)
+    email = serializers.EmailField(source='user.email', read_only=True)
+    phone_number = serializers.CharField(source='user.phone_number', read_only=True)
+
+    domains = DomainSerializer(many=True, required=False)
+    education = EducationSerializer(many=True, required=False)
+    certifications = CertificationSerializer(many=True, required=False)
+    mentorship_plans = MentorshipPlanSerializer(many=True, required=False)
 
     class Meta:
         model = ProfessionalProfile
-        exclude = ('user',)
+        fields = [
+            'id', 'full_name', 'email', 'phone_number', 'title', 'biography', 'hourly_rate', 'location',
+            'profile_picture', 'linkedin', 'github', 'twitter', 'website', 'domains', 'education',
+            'certifications', 'mentorship_plans', 'created_at', 'updated_at'
+        ]
 
     def create(self, validated_data):
         domains_data = validated_data.pop('domains', [])
@@ -109,8 +115,11 @@ class ProfessionalProfileSerializer(serializers.ModelSerializer):
         certifications_data = validated_data.pop('certifications', [])
         mentorship_plans_data = validated_data.pop('mentorship_plans', [])
 
-        profile = ProfessionalProfile.objects.create(**validated_data)
+        # Get the current user from the context
+        user = self.context['request'].user
+        profile = ProfessionalProfile.objects.create(user=user, **validated_data)
 
+        # Create nested objects
         for domain_data in domains_data:
             Domain.objects.create(profile=profile, **domain_data)
         
@@ -137,6 +146,7 @@ class ProfessionalProfileSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
 
+        # Update nested objects
         if domains_data is not None:
             instance.domains.all().delete()
             for domain_data in domains_data:
