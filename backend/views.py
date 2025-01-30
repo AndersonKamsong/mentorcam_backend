@@ -38,6 +38,8 @@ from rest_framework.decorators import api_view, permission_classes
 from django.contrib.auth import logout
 from rest_framework_simplejwt.exceptions import TokenError
 from django.shortcuts import get_object_or_404
+from .models import ProfessionalProfile
+from .serializers import ProfessionalProfileSerializer
 
 
 CustomUser = get_user_model()
@@ -407,50 +409,79 @@ class IsProfessional(BasePermission):
 import logging
 
 logger = logging.getLogger(__name__)
-
+# views.py
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from django.shortcuts import get_object_or_404
-from .models import ProfessionalProfile
-from .serializers import ProfessionalProfileSerializer
+from .models import ProfessionalProfile, CustomUser
+from .serializers import ProfessionalProfileSerializer, UserSerializer
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def current_user(request):
+    """Get current user information"""
+    serializer = UserSerializer(request.user)
+    return Response(serializer.data)
 
 @api_view(['GET', 'POST', 'PUT'])
 @permission_classes([IsAuthenticated])
 def professional_profile(request):
     try:
         if request.method == 'GET':
-            # Try to fetch the profile, or return an empty response if it doesn't exist
+            # Get both user and profile data
             profile = ProfessionalProfile.objects.filter(user=request.user).first()
             if profile:
-                serializer = ProfessionalProfileSerializer(profile)
-                return Response(serializer.data)
+                serializer = ProfessionalProfileSerializer(profile, context={'request': request})
+                # Include user data in response
+                response_data = serializer.data
+                response_data['user'] = UserSerializer(request.user).data
+                return Response(response_data)
             else:
-                return Response({}, status=status.HTTP_200_OK)
+                # Return user data even if profile doesn't exist
+                return Response({
+                    'user': UserSerializer(request.user).data
+                })
 
         elif request.method == 'POST':
-            # Check if a profile already exists for the user
             if ProfessionalProfile.objects.filter(user=request.user).exists():
                 return Response(
                     {'error': 'Profile already exists. Use PUT to update.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Create a new profile
-            serializer = ProfessionalProfileSerializer(data=request.data)
+            # Create new profile with form data
+            serializer = ProfessionalProfileSerializer(
+                data=request.data,
+                context={'request': request}
+            )
             if serializer.is_valid():
                 serializer.save(user=request.user)
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
+                response_data = serializer.data
+                response_data['user'] = UserSerializer(request.user).data
+                return Response(response_data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         elif request.method == 'PUT':
-            # Try to fetch the profile, or create a new one if it doesn't exist
-            profile, created = ProfessionalProfile.objects.get_or_create(user=request.user)
-            serializer = ProfessionalProfileSerializer(profile, data=request.data)
+            profile = ProfessionalProfile.objects.filter(user=request.user).first()
+            if not profile:
+                # Create profile if it doesn't exist
+                serializer = ProfessionalProfileSerializer(
+                    data=request.data,
+                    context={'request': request}
+                )
+            else:
+                serializer = ProfessionalProfileSerializer(
+                    profile,
+                    data=request.data,
+                    context={'request': request}
+                )
+                
             if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data)
+                serializer.save(user=request.user)
+                response_data = serializer.data
+                response_data['user'] = UserSerializer(request.user).data
+                return Response(response_data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     except Exception as e:
@@ -458,14 +489,8 @@ def professional_profile(request):
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
-    # views.py
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from .models import ProfessionalProfile
-from .serializers import ProfessionalProfileSerializer
+    
+    
 
 class ProfessionalProfileSearchView(APIView):
     def get(self, request):
