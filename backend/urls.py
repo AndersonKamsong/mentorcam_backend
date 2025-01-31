@@ -13,6 +13,8 @@ urlpatterns = [
     path('login/', views.login_user, name='login'),
     path('logout/', views.logout_user, name='logout'),
     path('current-user/', views.get_current_user, name='current-user'),
+    path('update-user/', views.UpdateUserView.as_view(), name='update-user'),
+
 
     
     # Password reset URLs
@@ -23,10 +25,8 @@ urlpatterns = [
     # Contact and Newsletter URLs
     path('contact/', ContactView.as_view(), name='contact'),
     path('newsletter/', NewsletterView.as_view(), name='newsletter'),
-
-
-    path('professional-profile/', views.professional_profile, name='professional-profile'),
     path('professional-profile/search/', ProfessionalProfileSearchView.as_view(), name='professional-profile-search'),
+
 
 
     

@@ -1,12 +1,12 @@
 from rest_framework import serializers
-from .models import Certification, CustomUser, Domain, Education, MentorshipPlan, ProfessionalProfile
+from .models import CustomUser
 from .models import Contact, Newsletter
 
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ('id', 'email', 'full_name', 'phone_number', 'user_type')
+        fields = ('id', 'email', 'full_name', 'phone_number', 'user_type', 'profile_picture', 'location')
 
 class RegisterSerializer(serializers.ModelSerializer):
     password2 = serializers.CharField(write_only=True)
@@ -70,87 +70,3 @@ class NewsletterSerializer(serializers.ModelSerializer):
         model = Newsletter
         fields = ['email']
 
-
-class DomainSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Domain
-        exclude = ('profile', 'id')
-
-class EducationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Education
-        exclude = ('profile', 'id')
-
-class CertificationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Certification
-        exclude = ('profile', 'id')
-
-class MentorshipPlanSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MentorshipPlan
-        exclude = ('profile', 'id')
-
-class ProfessionalProfileSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
-    domains = DomainSerializer(many=True, read_only=True)
-    education = EducationSerializer(many=True, read_only=True)
-    certifications = CertificationSerializer(many=True, read_only=True)
-    mentorship_plans = MentorshipPlanSerializer(many=True, read_only=True)
-    profile_picture = serializers.ImageField(required=False)
-
-    class Meta:
-        model = ProfessionalProfile
-        fields = '__all__'
-
-    def create(self, validated_data):
-        domains_data = self.context['request'].data.get('domains', [])
-        education_data = self.context['request'].data.get('education', [])
-        certifications_data = self.context['request'].data.get('certifications', [])
-        mentorship_plans_data = self.context['request'].data.get('mentorship_plans', [])
-
-        # Create professional profile
-        profile = ProfessionalProfile.objects.create(**validated_data)
-
-        # Create related objects
-        self._create_related_objects(profile, domains_data, education_data, 
-                                   certifications_data, mentorship_plans_data)
-
-        return profile
-
-    def update(self, instance, validated_data):
-        domains_data = self.context['request'].data.get('domains', [])
-        education_data = self.context['request'].data.get('education', [])
-        certifications_data = self.context['request'].data.get('certifications', [])
-        mentorship_plans_data = self.context['request'].data.get('mentorship_plans', [])
-
-        # Update profile fields
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-
-        # Clear existing related objects
-        instance.domains.all().delete()
-        instance.education.all().delete()
-        instance.certifications.all().delete()
-        instance.mentorship_plans.all().delete()
-
-        # Create new related objects
-        self._create_related_objects(instance, domains_data, education_data, 
-                                   certifications_data, mentorship_plans_data)
-
-        return instance
-
-    def _create_related_objects(self, profile, domains_data, education_data, 
-                              certifications_data, mentorship_plans_data):
-        # Create domains
-        for domain_data in domains_data:
-            Domain.objects.create(profile=profile, **domain_data)
-
-        # Create education
-        for edu_data in education_data:
-            Education.objects.create(profile=profile, **edu_data)
-
-        # Create certifications
-        for cert_data in certifications_data:
-            Certification.objects.create
