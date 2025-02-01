@@ -19,10 +19,6 @@ class CustomUser(AbstractUser):
     last_logout = models.DateTimeField(null=True, blank=True)
     profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
     location = models.CharField(max_length=255, blank=True, null=True)
-
-
-
-
     
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username', 'full_name']
@@ -57,7 +53,7 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 class ProfessionalCompleteProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='professional_complete_profile')
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='professional_complete_profile')
     title = models.CharField(max_length=255, blank=True, null=True)
     biography = models.TextField(blank=True, null=True)
     hourly_rate = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
@@ -75,6 +71,8 @@ class ProfessionalCompleteProfile(models.Model):
     certification_name = models.CharField(max_length=255, blank=True, null=True)
     certification_issuer = models.CharField(max_length=255, blank=True, null=True)
     certification_year = models.CharField(max_length=4, blank=True, null=True)
+    certification_file = models.FileField(upload_to='certifications/', blank=True, null=True)
+    diploma_file = models.FileField(upload_to='diplomas/', blank=True, null=True)
     
     # Mentorship Plan Fields
     plan_type = models.CharField(max_length=20, choices=[('monthly', 'Monthly'), ('trimester', 'Trimester'), ('yearly', 'Yearly')], blank=True, null=True)
@@ -87,4 +85,4 @@ class ProfessionalCompleteProfile(models.Model):
     subdomains = models.JSONField(default=list, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.user.full_name}'s Complete Professional Profile"
+        return f"{self.user.username}'s Complete Professional Profile"

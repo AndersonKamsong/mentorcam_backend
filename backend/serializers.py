@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import CustomUser
 from .models import Contact, Newsletter
+from .models import ProfessionalCompleteProfile
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -70,3 +71,63 @@ class NewsletterSerializer(serializers.ModelSerializer):
         model = Newsletter
         fields = ['email']
 
+class ProfessionalCompleteProfileSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(read_only=True)
+    certification_file = serializers.FileField(required=False, allow_null=True)
+    diploma_file = serializers.FileField(required=False, allow_null=True)
+    
+    class Meta:
+        model = ProfessionalCompleteProfile
+        fields = '__all__'
+        read_only_fields = ('user',)
+
+    def validate(self, data):
+        # Required fields validation
+        required_fields = ['title', 'biography', 'domain_name']
+        for field in required_fields:
+            if not data.get(field):
+                raise serializers.ValidationError({field: f"{field} is required"})
+        
+        # Validate numeric fields
+        if 'hourly_rate' in data and data['hourly_rate']:
+            try:
+                float(data['hourly_rate'])
+            except (TypeError, ValueError):
+                raise serializers.ValidationError({'hourly_rate': 'Must be a valid number'})
+                
+        if 'plan_price' in data and data['plan_price']:
+            try:
+                float(data['plan_price'])
+            except (TypeError, ValueError):
+                raise serializers.ValidationError({'plan_price': 'Must be a valid number'})
+
+        # Validate URLs if provided
+        url_fields = ['linkedin', 'github', 'twitter', 'website']
+        for field in url_fields:
+            if data.get(field) and not data[field].startswith(('http://', 'https://')):
+                data[field] = f'https://{data[field]}'
+
+        # Log the validated data for debugging
+        print("Validated Data:", data)
+        return data
+
+
+
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+from .models import ProfessionalCompleteProfile
+
+class MentorSearchSerializer(serializers.ModelSerializer):
+    full_name = serializers.CharField(source='user.full_name')
+    email = serializers.CharField(source='user.email')
+    profile_picture = serializers.ImageField(source='user.profile_picture')
+    location = serializers.CharField(source='user.location')
+    
+    class Meta:
+        model = ProfessionalCompleteProfile
+        fields = [
+            'id', 'full_name', 'email', 'profile_picture', 'location',
+            'title', 'biography', 'hourly_rate', 'linkedin', 'github',
+            'domain_name', 'subdomains', 'degree', 'institution',
+            'certification_name', 'plan_type', 'plan_price'
+        ]

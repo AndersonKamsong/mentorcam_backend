@@ -1,3 +1,4 @@
+from venv import logger
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -35,6 +36,9 @@ from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth import logout
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework import viewsets
+from .models import ProfessionalCompleteProfile
+from .serializers import ProfessionalCompleteProfileSerializer
 
 
 
@@ -416,19 +420,136 @@ class UserProfileView(APIView):
         serializer = ProfessionalProfileSerializer(profile)
         return Response(serializer.data)
     
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.db.models import Q
+from .models import ProfessionalCompleteProfile
+from .serializers import MentorSearchSerializer
+
 class ProfessionalProfileSearchView(APIView):
     def get(self, request):
-        domain = request.query_params.get('domain', '').strip().lower()
-        if not domain:
+        search_query = request.query_params.get('domain', '').strip().lower()
+        
+        if not search_query:
             return Response(
-                {"error": "Domain parameter is required."},
+                {"error": "Search query is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Search in both domain_name and subdomains
+        mentors = ProfessionalCompleteProfile.objects.filter(
+            Q(domain_name__icontains=search_query) |
+            Q(subdomains__icontains=search_query)
+        ).select_related('user')
+        
+        if not mentors.exists():
+            return Response({
+                "message": "No mentors found for the specified domain.",
+                "results": []
+            })
+        
+        serializer = MentorSearchSerializer(mentors, many=True)
+        
+        return Response({
+            "message": f"Found {mentors.count()} mentor(s) for '{search_query}'",
+            "results": serializer.data
+        })
+
+class ProfessionalCompleteProfileView(APIView):
+    serializer_class = ProfessionalCompleteProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        # Handle GET request to retrieve the profile
+        try:
+            profile = ProfessionalCompleteProfile.objects.get(user=request.user)
+            serializer = self.serializer_class(profile)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except ProfessionalCompleteProfile.DoesNotExist:
+            return Response(
+                {"detail": "Profile not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    def post(self, request, *args, **kwargs):
+        try:
+            # Log the incoming request data
+            logger.info(f"Received data: {request.data}")
+
+            if ProfessionalCompleteProfile.objects.filter(user=request.user).exists():
+                return Response(
+                    {"detail": "Profile already exists"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Remove file fields from request data
+            data = request.data.copy()
+            for field in ['certification_file', 'diploma_file']:
+                if field in data:
+                    del data[field]
+
+            # Convert empty strings to None for optional fields
+            for key, value in data.items():
+                if value == '':
+                    data[key] = None
+
+            serializer = self.serializer_class(data=data, context={'request': request})
+            
+            if not serializer.is_valid():
+                logger.error(f"Validation errors: {serializer.errors}")
+                return Response(
+                    {"errors": serializer.errors},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            profile = serializer.save(user=request.user)
+            logger.info(f"Profile created successfully for user {request.user.id}")
+            
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.exception("Error creating profile")
+            return Response(
+                {"detail": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Search for mentors whose domains match the query
-        mentors = ProfessionalProfile.objects.filter(domains__icontains=domain)
-        serializer = ProfessionalProfileSerializer(mentors, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    def put(self, request, *args, **kwargs):
+        # Handle PUT request to update the profile
+        try:
+            profile = ProfessionalCompleteProfile.objects.get(user=request.user)
+            serializer = self.serializer_class(profile, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except ProfessionalCompleteProfile.DoesNotExist:
+            return Response(
+                {"detail": "Profile not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+class FileUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        try:
+            profile = ProfessionalCompleteProfile.objects.get(user=request.user)
+        except ProfessionalCompleteProfile.DoesNotExist:
+            return Response(
+                {"detail": "Profile not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if 'certification_file' in request.FILES:
+            profile.certification_file = request.FILES['certification_file']
+        if 'diploma_file' in request.FILES:
+            profile.diploma_file = request.FILES['diploma_file']
+
+        profile.save()
+        return Response(
+            {"detail": "Files uploaded successfully"},
+            status=status.HTTP_200_OK
+        )
 
 
 
