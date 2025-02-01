@@ -86,3 +86,19 @@ class ProfessionalCompleteProfile(models.Model):
 
     def __str__(self):
         return f"{self.user.username}'s Complete Professional Profile"
+ 
+    
+from django.core.validators import MinValueValidator, MaxValueValidator
+
+class ProfessionalRating(models.Model):
+    professional = models.ForeignKey('ProfessionalCompleteProfile', on_delete=models.CASCADE, related_name='ratings')
+    rated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='ratings_given')
+    rating = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
+    comment = models.TextField()
+    experience_details = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    domain = models.CharField(max_length=255)
+    subdomain = models.CharField(max_length=255)
+
+    class Meta:
+        unique_together = ('professional', 'rated_by')

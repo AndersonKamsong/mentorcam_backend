@@ -419,15 +419,18 @@ class UserProfileView(APIView):
         profile = get_object_or_404(ProfessionalProfile, user=user)
         serializer = ProfessionalProfileSerializer(profile)
         return Response(serializer.data)
-    
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import AllowAny
 from django.db.models import Q
 from .models import ProfessionalCompleteProfile
-from .serializers import MentorSearchSerializer
+from .serializers import PublicMentorSearchSerializer
 
-class ProfessionalProfileSearchView(APIView):
+class PublicProfessionalProfileSearchView(APIView):
+    permission_classes = [AllowAny]  # Allow unauthenticated access
+    
     def get(self, request):
         search_query = request.query_params.get('domain', '').strip().lower()
         
@@ -449,11 +452,12 @@ class ProfessionalProfileSearchView(APIView):
                 "results": []
             })
         
-        serializer = MentorSearchSerializer(mentors, many=True)
+        serializer = PublicMentorSearchSerializer(mentors, many=True)
         
         return Response({
             "message": f"Found {mentors.count()} mentor(s) for '{search_query}'",
-            "results": serializer.data
+            "results": serializer.data,
+            "requiresAuth": True  # Flag to indicate authentication is needed for full access
         })
 
 class ProfessionalCompleteProfileView(APIView):
@@ -551,6 +555,40 @@ class FileUploadView(APIView):
             status=status.HTTP_200_OK
         )
 
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from django.db.models import Q
+from .models import ProfessionalRating
+from .serializers import RatingSerializer, ProfessionalListSerializer
 
+@api_view(['GET'])
+def list_professionals(request):
+    domain = request.query_params.get('domain', '')
+    subdomain = request.query_params.get('subdomain', '')
+    
+    queryset = ProfessionalCompleteProfile.objects.all()
+    
+    if domain:
+        queryset = queryset.filter(domain_name=domain)
+    if subdomain:
+        queryset = queryset.filter(subdomains__contains=[subdomain])
+    
+    serializer = ProfessionalListSerializer(queryset, many=True)
+    return Response(serializer.data)
+
+class RatingViewSet(viewsets.ModelViewSet):
+    serializer_class = RatingSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return ProfessionalRating.objects.filter(
+            Q(professional__user=self.request.user) | 
+            Q(rated_by=self.request.user)
+        )
+    
+    def perform_create(self, serializer):
+        serializer.save(rated_by=self.request.user)
 
 

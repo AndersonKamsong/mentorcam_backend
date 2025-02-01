@@ -113,21 +113,50 @@ class ProfessionalCompleteProfileSerializer(serializers.ModelSerializer):
 
 
 
+# serializers.py
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import ProfessionalCompleteProfile
 
-class MentorSearchSerializer(serializers.ModelSerializer):
+class PublicMentorSearchSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='user.full_name')
     email = serializers.CharField(source='user.email')
-    profile_picture = serializers.ImageField(source='user.profile_picture')
+    profile_picture = serializers.CharField(source='user.profile_picture')
     location = serializers.CharField(source='user.location')
     
     class Meta:
         model = ProfessionalCompleteProfile
         fields = [
             'id', 'full_name', 'email', 'profile_picture', 'location',
-            'title', 'biography', 'hourly_rate', 'linkedin', 'github',
-            'domain_name', 'subdomains', 'degree', 'institution',
-            'certification_name', 'plan_type', 'plan_price'
+            'title', 'biography', 'domain_name', 'subdomains',
+            'degree', 'institution'
         ]
+
+
+from .models import ProfessionalRating, ProfessionalCompleteProfile
+
+class ProfessionalListSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source='user.full_name')
+    average_rating = serializers.SerializerMethodField()
+    total_reviews = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProfessionalCompleteProfile
+        fields = ['id', 'name', 'domain_name', 'subdomains', 'average_rating', 
+                 'total_reviews', 'certification_name', 'plan_price']
+    
+    def get_average_rating(self, obj):
+        ratings = obj.ratings.all()
+        if not ratings:
+            return 0
+        return sum(r.rating for r in ratings) / len(ratings)
+    
+    def get_total_reviews(self, obj):
+        return obj.ratings.count()
+
+class RatingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProfessionalRating
+        fields = ['id', 'professional', 'rating', 'comment', 
+                 'experience_details', 'domain', 'subdomain']
+        read_only_fields = ['rated_by']

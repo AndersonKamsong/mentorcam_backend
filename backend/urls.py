@@ -1,11 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import ContactView, NewsletterView, ProfessionalProfileSearchView, ProfessionalCompleteProfileView, FileUploadView
+from .views import ContactView, NewsletterView, PublicProfessionalProfileSearchView, ProfessionalCompleteProfileView, FileUploadView
 
 # Create a router and register the UserViewSet
 router = DefaultRouter()
 router.register(r'users', views.UserViewSet, basename='user')
+router.register(r'ratings', views.RatingViewSet, basename='rating')
 
 urlpatterns = [
     # Authentication URLs
@@ -25,10 +26,14 @@ urlpatterns = [
     # Contact and Newsletter URLs
     path('contact/', ContactView.as_view(), name='contact'),
     path('newsletter/', NewsletterView.as_view(), name='newsletter'),
-    path('mentors/search/', ProfessionalProfileSearchView.as_view(), name='mentor-search'),
+
+
+    path('mentors/search/', PublicProfessionalProfileSearchView.as_view(), name='public-mentor-search'),
 
     path('professional-profile/', ProfessionalCompleteProfileView.as_view(), name='professional-profile'),
     path('professional-profile/upload/', FileUploadView.as_view(), name='professional-profile-upload'),
+
+    path('professionals/', views.list_professionals, name='list-professionals'),
 
     
     # Include the router URLs
