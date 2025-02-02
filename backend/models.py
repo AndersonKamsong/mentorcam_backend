@@ -86,8 +86,8 @@ class ProfessionalCompleteProfile(models.Model):
 
     def __str__(self):
         return f"{self.user.username}'s Complete Professional Profile"
- 
-    
+
+
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 class ProfessionalRating(models.Model):
@@ -102,3 +102,25 @@ class ProfessionalRating(models.Model):
 
     class Meta:
         unique_together = ('professional', 'rated_by')
+
+class Booking(models.Model):
+    mentor = models.ForeignKey('ProfessionalCompleteProfile', on_delete=models.CASCADE)
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    booking_date = models.DateTimeField(auto_now_add=True)
+    session_date = models.DateTimeField()
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('confirmed', 'Confirmed'),
+            ('completed', 'Completed'),
+            ('cancelled', 'Cancelled')
+        ],
+        default='pending'
+    )
+    phone_number = models.CharField(max_length=15)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    transaction_id = models.CharField(max_length=100)
+
+    class Meta:
+        ordering = ['-booking_date']

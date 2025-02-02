@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import CustomUser
+from .models import Booking, CustomUser
 from .models import Contact, Newsletter
 from .models import ProfessionalCompleteProfile
 
@@ -160,3 +160,31 @@ class RatingSerializer(serializers.ModelSerializer):
         fields = ['id', 'professional', 'rating', 'comment', 
                  'experience_details', 'domain', 'subdomain']
         read_only_fields = ['rated_by']
+
+    def validate(self, data):
+        # Check if user has already rated this professional
+        user = self.context['request'].user
+        professional = data.get('professional')
+        
+        if ProfessionalRating.objects.filter(
+            professional=professional,
+            rated_by=user
+        ).exists():
+            raise serializers.ValidationError({
+                "detail": "You have already rated this professional"
+            })
+        
+        # Validate required fields
+        if not data.get('rating'):
+            raise serializers.ValidationError({
+                "rating": "Rating is required"
+            })
+            
+        return data
+
+
+class BookingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Booking
+        fields = '__all__'
+        read_only_fields = ('student', 'status')

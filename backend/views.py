@@ -5,7 +5,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.contrib.auth import authenticate
-from .serializers import RegisterSerializer, UserSerializer
+from .serializers import BookingSerializer, RegisterSerializer, UserSerializer
 from django.core.exceptions import ValidationError
 from django.contrib.auth import logout
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
@@ -29,7 +29,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
-from .models import CustomUser
+from .models import Booking, CustomUser
 from rest_framework.permissions import BasePermission
 from django.db.models import Q
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
@@ -39,6 +39,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework import viewsets
 from .models import ProfessionalCompleteProfile
 from .serializers import ProfessionalCompleteProfileSerializer
+from backend import serializers
 
 
 
@@ -588,7 +589,43 @@ class RatingViewSet(viewsets.ModelViewSet):
             Q(rated_by=self.request.user)
         )
     
+    def create(self, request, *args, **kwargs):
+        try:
+            # Validate required fields
+            if not request.data.get('domain'):
+                raise ValidationError({'domain': 'This field is required.'})
+            if not request.data.get('subdomain'):
+                raise ValidationError({'subdomain': 'This field is required.'})
+            
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except ValidationError as e:
+            return Response(
+                e.detail,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
     def perform_create(self, serializer):
         serializer.save(rated_by=self.request.user)
 
 
+class BookingViewSet(viewsets.ModelViewSet):
+    serializer_class = BookingSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.user_type == 'professional':
+            return Booking.objects.filter(mentor__user=user)
+        return Booking.objects.filter(student=user)
+
+    def perform_create(self, serializer):
+        serializer.save(student=self.request.user)
