@@ -2,7 +2,8 @@ from rest_framework import serializers
 from .models import Booking, CustomUser
 from .models import Contact, Newsletter
 from .models import ProfessionalCompleteProfile
-
+from django.contrib.auth import get_user_model
+from .models import ProfessionalCompleteProfile
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -107,16 +108,15 @@ class ProfessionalCompleteProfileSerializer(serializers.ModelSerializer):
             if data.get(field) and not data[field].startswith(('http://', 'https://')):
                 data[field] = f'https://{data[field]}'
 
+        # Validate JSONField for subdomains
+        if 'subdomains' in data and data['subdomains']:
+            if not isinstance(data['subdomains'], list):
+                raise serializers.ValidationError({'subdomains': 'Must be a list of subdomains'})
+
         # Log the validated data for debugging
         print("Validated Data:", data)
         return data
 
-
-
-# serializers.py
-from rest_framework import serializers
-from django.contrib.auth import get_user_model
-from .models import ProfessionalCompleteProfile
 
 class PublicMentorSearchSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='user.full_name')

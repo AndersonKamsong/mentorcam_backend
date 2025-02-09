@@ -75,7 +75,14 @@ class ProfessionalCompleteProfile(models.Model):
     diploma_file = models.FileField(upload_to='diplomas/', blank=True, null=True)
     
     # Mentorship Plan Fields
-    plan_type = models.CharField(max_length=20, choices=[('monthly', 'Monthly'), ('trimester', 'Trimester'), ('yearly', 'Yearly')], blank=True, null=True)
+    PLAN_CHOICES = [
+        ('monthly', 'Monthly'),
+        ('trimester', 'Trimester'),
+        ('semester', 'Semester'),
+        ('yearly', 'Yearly'),
+        ('annually', 'Annually'),
+    ]
+    plan_type = models.CharField(max_length=20, choices=PLAN_CHOICES, blank=True, null=True)
     plan_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     plan_description = models.TextField(blank=True, null=True)
     max_students = models.PositiveIntegerField(blank=True, null=True)
@@ -83,7 +90,10 @@ class ProfessionalCompleteProfile(models.Model):
     # Domain Fields
     domain_name = models.CharField(max_length=255, blank=True, null=True)
     subdomains = models.JSONField(default=list, blank=True, null=True)
-
+    
+    # Price Tracking Field
+    price_traffic = models.PositiveIntegerField(default=0, help_text="Track the number of views or changes on pricing")
+    
     def __str__(self):
         return f"{self.user.username}'s Complete Professional Profile"
 
@@ -124,3 +134,5 @@ class Booking(models.Model):
 
     class Meta:
         ordering = ['-booking_date']
+
+

@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import BookingViewSet, ContactView, NewsletterView, PublicProfessionalProfileSearchView, ProfessionalCompleteProfileView, FileUploadView
+from .views import BookingViewSet, ContactView, NewsletterView, PdfDocumentView, ProfessionalProfileView, PublicProfessionalProfileSearchView, ProfessionalCompleteProfileView, FileUploadView
 
 # Create a router and register the UserViewSet
 router = DefaultRouter()
@@ -33,11 +33,16 @@ urlpatterns = [
     path('mentors/search/', PublicProfessionalProfileSearchView.as_view(), name='public-mentor-search'),
 
     path('professional-profile/', ProfessionalCompleteProfileView.as_view(), name='professional-profile'),
-    path('professional-profile/upload/', FileUploadView.as_view(), name='professional-profile-upload'),
-
+    path('professional-profile/<int:profile_id>/upload/', FileUploadView.as_view(), name='professional-profile-upload'),
+    
+    
     path('professionals/', views.list_professionals, name='list-professionals'),
 
     
+    path('professional-profile/<int:profile_id>/', ProfessionalProfileView.as_view()),
+    path('professional-profile/<int:profile_id>/document/<str:document_type>/', PdfDocumentView.as_view()),
+
+
     # Include the router URLs
     path('', include(router.urls)),
 ]

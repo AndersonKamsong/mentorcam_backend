@@ -426,11 +426,12 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from django.db.models import Q
+from django.http import FileResponse
 from .models import ProfessionalCompleteProfile
-from .serializers import PublicMentorSearchSerializer
+from .serializers import PublicMentorSearchSerializer, ProfessionalCompleteProfileSerializer
 
 class PublicProfessionalProfileSearchView(APIView):
-    permission_classes = [AllowAny]  # Allow unauthenticated access
+    permission_classes = [AllowAny]
     
     def get(self, request):
         search_query = request.query_params.get('domain', '').strip().lower()
@@ -441,11 +442,10 @@ class PublicProfessionalProfileSearchView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Search in both domain_name and subdomains
         mentors = ProfessionalCompleteProfile.objects.filter(
             Q(domain_name__icontains=search_query) |
             Q(subdomains__icontains=search_query)
-        ).select_related('user')
+        ).select_related('user').prefetch_related('ratings')
         
         if not mentors.exists():
             return Response({
@@ -457,9 +457,51 @@ class PublicProfessionalProfileSearchView(APIView):
         
         return Response({
             "message": f"Found {mentors.count()} mentor(s) for '{search_query}'",
-            "results": serializer.data,
-            "requiresAuth": True  # Flag to indicate authentication is needed for full access
+            "results": serializer.data
         })
+
+class ProfessionalProfileView(APIView):
+    def get(self, request, profile_id):
+        try:
+            profile = ProfessionalCompleteProfile.objects.get(id=profile_id)
+            serializer = ProfessionalCompleteProfileSerializer(profile)
+            return Response(serializer.data)
+        except ProfessionalCompleteProfile.DoesNotExist:
+            return Response(
+                {"detail": "Profile not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+class PdfDocumentView(APIView):
+    def get(self, request, profile_id, document_type):
+        try:
+            profile = ProfessionalCompleteProfile.objects.get(id=profile_id)
+            
+            if document_type == 'certification':
+                file = profile.certification_file
+            elif document_type == 'diploma':
+                file = profile.diploma_file
+            else:
+                return Response(
+                    {"detail": "Invalid document type"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            if not file:
+                return Response(
+                    {"detail": "Document not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+                
+            response = FileResponse(file.open(), content_type='application/pdf')
+            response['Content-Disposition'] = f'inline; filename="{file.name}"'
+            return response
+            
+        except ProfessionalCompleteProfile.DoesNotExist:
+            return Response(
+                {"detail": "Profile not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 class ProfessionalCompleteProfileView(APIView):
     serializer_class = ProfessionalCompleteProfileSerializer
@@ -476,6 +518,7 @@ class ProfessionalCompleteProfileView(APIView):
                 {"detail": "Profile not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
+
     def post(self, request, *args, **kwargs):
         try:
             # Log the incoming request data
@@ -532,19 +575,22 @@ class ProfessionalCompleteProfileView(APIView):
                 {"detail": "Profile not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
+        
 
 class FileUploadView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, *args, **kwargs):
+    def post(self, request, profile_id, *args, **kwargs):
         try:
-            profile = ProfessionalCompleteProfile.objects.get(user=request.user)
+            # Fetch the profile using the provided profile_id
+            profile = ProfessionalCompleteProfile.objects.get(id=profile_id, user=request.user)
         except ProfessionalCompleteProfile.DoesNotExist:
             return Response(
                 {"detail": "Profile not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Handle file uploads
         if 'certification_file' in request.FILES:
             profile.certification_file = request.FILES['certification_file']
         if 'diploma_file' in request.FILES:
