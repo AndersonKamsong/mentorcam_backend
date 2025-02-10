@@ -34,13 +34,12 @@ urlpatterns = [
 
     path('professional-profile/', ProfessionalCompleteProfileView.as_view(), name='professional-profile'),
     path('professional-profile/<int:profile_id>/upload/', FileUploadView.as_view(), name='professional-profile-upload'),
-    
-    
-    path('professionals/', views.list_professionals, name='list-professionals'),
-
-    
+    path('professionals/', views.list_professionals, name='list-professionals'),    
     path('professional-profile/<int:profile_id>/', ProfessionalProfileView.as_view()),
     path('professional-profile/<int:profile_id>/document/<str:document_type>/', PdfDocumentView.as_view()),
+
+
+
 
 
     # Include the router URLs

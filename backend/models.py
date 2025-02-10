@@ -113,11 +113,26 @@ class ProfessionalRating(models.Model):
     class Meta:
         unique_together = ('professional', 'rated_by')
 
+from django.db import models
+from django.conf import settings
+from decimal import Decimal
+
+from django.db import models
+from django.conf import settings
+
 class Booking(models.Model):
     mentor = models.ForeignKey('ProfessionalCompleteProfile', on_delete=models.CASCADE)
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    student_name = models.CharField(max_length=255, default='null')
+    student_email = models.EmailField(max_length=255, default='null')  # Added email field
+    mentor_name = models.CharField(max_length=255)
     booking_date = models.DateTimeField(auto_now_add=True)
-    session_date = models.DateTimeField()
+    phone_number = models.CharField(max_length=15)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    transaction_id = models.CharField(max_length=100)
+    plan_type = models.CharField(max_length=50)
+    domain = models.CharField(max_length=100)
+    subdomains = models.JSONField(default=list)
     status = models.CharField(
         max_length=20,
         choices=[
@@ -128,11 +143,16 @@ class Booking(models.Model):
         ],
         default='pending'
     )
-    phone_number = models.CharField(max_length=15)
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    transaction_id = models.CharField(max_length=100)
+    payment_reference = models.CharField(max_length=100, unique=True)
+    pdf_receipt = models.FileField(upload_to='receipts/', null=True, blank=True)
 
     class Meta:
         ordering = ['-booking_date']
-
-
+        # Add unique constraint to prevent multiple active bookings
+        constraints = [
+            models.UniqueConstraint(
+                fields=['student', 'mentor'],
+                condition=models.Q(status__in=['pending', 'confirmed']),
+                name='unique_active_booking'
+            )
+        ]

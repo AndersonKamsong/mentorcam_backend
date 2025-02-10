@@ -663,15 +663,114 @@ class RatingViewSet(viewsets.ModelViewSet):
         serializer.save(rated_by=self.request.user)
 
 
+
+from rest_framework import viewsets, status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from django.conf import settings
+from django.db import transaction
+from campay.sdk import Client as CamPayClient
+import uuid
+from .utils import generate_pdf_receipt
+import json
+from django.db.utils import IntegrityError
+
 class BookingViewSet(viewsets.ModelViewSet):
     serializer_class = BookingSerializer
     permission_classes = [IsAuthenticated]
+    
+    campay = CamPayClient({
+        "app_username": settings.CAMPAY_USERNAME,
+        "app_password": settings.CAMPAY_PASSWORD,
+        "environment": "PROD"
+    })
 
     def get_queryset(self):
         user = self.request.user
-        if user.user_type == 'professional':
+        if hasattr(user, 'professional_profile'):
             return Booking.objects.filter(mentor__user=user)
         return Booking.objects.filter(student=user)
 
-    def perform_create(self, serializer):
-        serializer.save(student=self.request.user)
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        
+        # Check if user already has an active booking with this mentor
+        existing_booking = Booking.objects.filter(
+            student=request.user,
+            mentor_id=data['mentorId'],
+            status__in=['pending', 'confirmed']
+        ).first()
+
+        if existing_booking:
+            return Response({
+                'error': 'You already have an ongoing session with this mentor',
+                'booking_id': existing_booking.id
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Format phone number
+        phone = data.get('phoneNumber', '')
+        if not phone.startswith('237'):
+            phone = '237' + phone
+
+        # Generate payment reference
+        payment_reference = str(uuid.uuid4())
+
+        try:
+            # Initialize CamPay payment
+            payment_response = self.campay.collect({
+                "amount": str(data['amount']),
+                "currency": "XAF",
+                "from": phone,
+                "description": f"Booking with {data['mentorName']}",
+                "external_reference": payment_reference
+            })
+
+            if payment_response.get('status') == 'SUCCESSFUL':
+                # Create booking
+                serializer = self.get_serializer(data={
+                    'mentor_id': data['mentorId'],
+                    'student': request.user.id,
+                    'student_name': data['studentName'],
+                    'student_email': data['studentEmail'],
+                    'mentor_name': data['mentorName'],
+                    'phone_number': phone,
+                    'amount': data['amount'],
+                    'transaction_id': payment_response['reference'],
+                    'plan_type': data['planType'],
+                    'domain': data['domain'],
+                    'subdomains': json.dumps(data['subdomains']),
+                    'status': 'confirmed',
+                    'payment_reference': payment_reference
+                })
+                
+                if serializer.is_valid():
+                    booking = serializer.save()
+                    
+                    # Generate PDF receipt
+                    file_name, pdf_file = generate_pdf_receipt(booking)
+                    booking.pdf_receipt.save(file_name, pdf_file)
+
+                    return Response({
+                        'status': 'success',
+                        'booking': serializer.data,
+                        'receipt_url': booking.pdf_receipt.url if booking.pdf_receipt else None
+                    }, status=status.HTTP_201_CREATED)
+                
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            return Response({
+                'error': 'Payment failed',
+                'details': payment_response.get('message', 'Unknown error')
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        except IntegrityError:
+            return Response({
+                'error': 'You already have an ongoing session with this mentor'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'error': 'Payment initialization failed',
+                'details': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)

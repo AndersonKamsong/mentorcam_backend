@@ -138,6 +138,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+CAMPAY_USERNAME =  "JByBUneb4BceuEyoMu1nKlmyTgVomd-QfokOrs4t4B9tPJS7hhqUtpuxOx5EQ7zpT0xmYw3P6DU6LU0mH2DvaQ"
+CAMPAY_PASSWORD = "m-Xuj9EQIT_zeQ5hSn8hLjYlyJT7KnSTHABYVp7tKeHKgsVnF0x6PEcdtZCVaDM0BN5mX-eylX0fhrGGMZBrWg"
+
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 

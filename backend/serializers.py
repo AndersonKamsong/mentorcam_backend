@@ -183,8 +183,10 @@ class RatingSerializer(serializers.ModelSerializer):
         return data
 
 
+from rest_framework import serializers
+
 class BookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = '__all__'
-        read_only_fields = ('student', 'status')
+        read_only_fields = ('student', 'status', 'payment_reference', 'pdf_receipt')
