@@ -1,3 +1,4 @@
+from venv import logger
 from rest_framework import serializers
 from .models import Booking, CustomUser
 from .models import Contact, Newsletter
@@ -184,9 +185,69 @@ class RatingSerializer(serializers.ModelSerializer):
 
 
 from rest_framework import serializers
+from .models import Booking
 
 class BookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = '__all__'
         read_only_fields = ('student', 'status', 'payment_reference', 'pdf_receipt')
+
+    def validate(self, data):
+        logger.info(f"Validating data in serializer: {data}")
+        
+        # Ensure mentor is provided
+        if 'mentor' not in data:
+            raise serializers.ValidationError({"mentor": "This field is required."})
+            
+        # Add any additional validation here
+        if not data.get('mentor_name'):
+            raise serializers.ValidationError({"mentor_name": "This field is required."})
+            
+        return data
+
+    def create(self, validated_data):
+        logger.info(f"Creating booking with validated data: {validated_data}")
+        validated_data['student'] = self.context['request'].user
+        return super().create(validated_data)
+    
+
+from rest_framework import serializers
+from .models import Event, EventTag, EventAttendee
+
+class EventTagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventTag
+        fields = ['id', 'name']
+
+class EventAttendeeSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    
+    class Meta:
+        model = EventAttendee
+        fields = ['id', 'user', 'user_name', 'registered_at', 'attendance_status']
+
+class EventSerializer(serializers.ModelSerializer):
+    tags = EventTagSerializer(many=True, read_only=True)
+    tag_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+    attendees = EventAttendeeSerializer(many=True, read_only=True)
+    registration_available = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Event
+        fields = [
+            'id', 'title', 'description', 'status', 'location', 'date',
+            'attendees_count', 'is_virtual', 'is_featured', 'image',
+            'tags', 'tag_ids', 'created_at', 'updated_at', 'organizer',
+            'max_attendees', 'registration_deadline', 'attendees',
+            'registration_available'
+        ]
+
+    def get_registration_available(self, obj):
+        return obj.attendees.count() < obj.max_attendees
+
+    def create(self, validated_data):
+        tag_ids = validated_data.pop('tag_ids', [])
+        event = Event.objects.create(**validated_data)
+        event.tags.set(EventTag.objects.filter(id__in=tag_ids))
+        return event

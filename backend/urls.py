@@ -1,13 +1,15 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import BookingViewSet, ContactView, NewsletterView, PdfDocumentView, ProfessionalProfileView, PublicProfessionalProfileSearchView, ProfessionalCompleteProfileView, FileUploadView
+from .views import BookingViewSet, ContactView, EventViewSet, NewsletterView, PdfDocumentView, ProfessionalProfileView, PublicProfessionalProfileSearchView, ProfessionalCompleteProfileView, FileUploadView
 
 # Create a router and register the UserViewSet
 router = DefaultRouter()
 router.register(r'users', views.UserViewSet, basename='user')
 router.register(r'ratings', views.RatingViewSet, basename='rating')
 router.register(r'bookings', BookingViewSet, basename='booking')
+router.register(r'events', EventViewSet)
+
 
 
 urlpatterns = [

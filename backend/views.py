@@ -663,7 +663,6 @@ class RatingViewSet(viewsets.ModelViewSet):
         serializer.save(rated_by=self.request.user)
 
 
-
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -673,8 +672,10 @@ from django.db import transaction
 from campay.sdk import Client as CamPayClient
 import uuid
 from .utils import generate_pdf_receipt
-import json
+import logging
 from django.db.utils import IntegrityError
+
+logger = logging.getLogger(__name__)
 
 class BookingViewSet(viewsets.ModelViewSet):
     serializer_class = BookingSerializer
@@ -694,30 +695,41 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        data = request.data
-        
-        # Check if user already has an active booking with this mentor
-        existing_booking = Booking.objects.filter(
-            student=request.user,
-            mentor_id=data['mentorId'],
-            status__in=['pending', 'confirmed']
-        ).first()
-
-        if existing_booking:
-            return Response({
-                'error': 'You already have an ongoing session with this mentor',
-                'booking_id': existing_booking.id
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Format phone number
-        phone = data.get('phoneNumber', '')
-        if not phone.startswith('237'):
-            phone = '237' + phone
-
-        # Generate payment reference
-        payment_reference = str(uuid.uuid4())
-
         try:
+            data = request.data
+            logger.info(f"Received booking data: {data}")
+            
+            # Validate required fields
+            required_fields = ['mentorId', 'studentName', 'studentEmail', 'mentorName', 
+                             'phoneNumber', 'amount', 'planType', 'domain', 'subdomains']
+            
+            missing_fields = [field for field in required_fields if not data.get(field)]
+            if missing_fields:
+                return Response({
+                    'error': f'Missing required fields: {", ".join(missing_fields)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Check if user already has an active booking
+            existing_booking = Booking.objects.filter(
+                student=request.user,
+                mentor_id=data['mentorId'],
+                status__in=['pending', 'confirmed']
+            ).first()
+
+            if existing_booking:
+                return Response({
+                    'error': 'You already have an ongoing session with this mentor',
+                    'booking_id': existing_booking.id
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Format phone number
+            phone = data.get('phoneNumber', '')
+            if not phone.startswith('237'):
+                phone = '237' + phone
+
+            # Generate payment reference
+            payment_reference = str(uuid.uuid4())
+
             # Initialize CamPay payment
             payment_response = self.campay.collect({
                 "amount": str(data['amount']),
@@ -727,11 +739,12 @@ class BookingViewSet(viewsets.ModelViewSet):
                 "external_reference": payment_reference
             })
 
+            logger.info(f"Payment response: {payment_response}")
+
             if payment_response.get('status') == 'SUCCESSFUL':
-                # Create booking
-                serializer = self.get_serializer(data={
-                    'mentor_id': data['mentorId'],
-                    'student': request.user.id,
+                # Prepare booking data
+                booking_data = {
+                    'mentor_id': data['mentorId'],  # This will now match with the serializer
                     'student_name': data['studentName'],
                     'student_email': data['studentEmail'],
                     'mentor_name': data['mentorName'],
@@ -740,13 +753,17 @@ class BookingViewSet(viewsets.ModelViewSet):
                     'transaction_id': payment_response['reference'],
                     'plan_type': data['planType'],
                     'domain': data['domain'],
-                    'subdomains': json.dumps(data['subdomains']),
+                    'subdomains': data['subdomains'],
                     'status': 'confirmed',
                     'payment_reference': payment_reference
-                })
+                }
+
+                logger.info(f"Creating booking with data: {booking_data}")
+                
+                serializer = self.get_serializer(data=booking_data)
                 
                 if serializer.is_valid():
-                    booking = serializer.save()
+                    booking = serializer.save(student=request.user)
                     
                     # Generate PDF receipt
                     file_name, pdf_file = generate_pdf_receipt(booking)
@@ -758,19 +775,124 @@ class BookingViewSet(viewsets.ModelViewSet):
                         'receipt_url': booking.pdf_receipt.url if booking.pdf_receipt else None
                     }, status=status.HTTP_201_CREATED)
                 
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                logger.error(f"Serializer errors: {serializer.errors}")
+                return Response({
+                    'error': 'Invalid booking data',
+                    'details': serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             return Response({
                 'error': 'Payment failed',
                 'details': payment_response.get('message', 'Unknown error')
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        except IntegrityError:
+        except IntegrityError as e:
+            logger.error(f"IntegrityError: {str(e)}")
             return Response({
                 'error': 'You already have an ongoing session with this mentor'
             }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
             return Response({
-                'error': 'Payment initialization failed',
+                'error': 'Booking creation failed',
                 'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='check-active/(?P<mentor_id>[^/.]+)')
+    def check_active_booking(self, request, mentor_id=None):
+        try:
+            active_booking = Booking.objects.filter(
+                student=request.user,
+                mentor_id=mentor_id,
+                status__in=['pending', 'confirmed']
+            ).exists()
+            
+            return Response({
+                'hasActiveBooking': active_booking
+            })
+        except Exception as e:
+            logger.error(f"Error checking active booking: {str(e)}")
+            return Response({
+                'error': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
+        
+# views.py
+from rest_framework import viewsets, filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import Event, EventTag, EventAttendee
+from .serializers import EventSerializer, EventTagSerializer, EventAttendeeSerializer
+
+class EventViewSet(viewsets.ModelViewSet):
+    queryset = Event.objects.all()
+    serializer_class = EventSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['status', 'is_virtual', 'is_featured']
+    search_fields = ['title', 'description', 'location']
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        total_events = Event.objects.count()
+        total_attendees = sum(Event.objects.values_list('attendees_count', flat=True))
+        virtual_events = Event.objects.filter(is_virtual=True).count()
+        completed_events = Event.objects.filter(status='ended').count()
+
+        return Response({
+            'total_events': total_events,
+            'total_attendees': total_attendees,
+            'virtual_events': virtual_events,
+            'completed_events': completed_events
+        })
+
+    @action(detail=True, methods=['post'])
+    def register(self, request, pk=None):
+        event = self.get_object()
+        user = request.user
+        
+        if event.register_attendee(user):
+            return Response({'status': 'registered'})
+        return Response(
+            {'error': 'Registration failed - event might be full'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    @action(detail=True, methods=['post'])
+    def add_tag(self, request, pk=None):
+        event = self.get_object()
+        tag_name = request.data.get('name')
+        
+        if not tag_name:
+            return Response(
+                {'error': 'Tag name is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        tag, created = EventTag.objects.get_or_create(name=tag_name)
+        event.tags.add(tag)
+        
+        return Response(EventTagSerializer(tag).data)
+
+    @action(detail=True, methods=['get'])
+    def attendees(self, request, pk=None):
+        event = self.get_object()
+        attendees = event.attendees.all()
+        serializer = EventAttendeeSerializer(attendees, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['patch'])
+    def update_attendee_status(self, request, pk=None):
+        event = self.get_object()
+        user_id = request.data.get('user_id')
+        status = request.data.get('status')
+        
+        try:
+            attendee = event.attendees.get(user_id=user_id)
+            attendee.attendance_status = status
+            attendee.save()
+            return Response(EventAttendeeSerializer(attendee).data)
+        except EventAttendee.DoesNotExist:
+            return Response(
+                {'error': 'Attendee not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )

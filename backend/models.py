@@ -113,12 +113,8 @@ class ProfessionalRating(models.Model):
     class Meta:
         unique_together = ('professional', 'rated_by')
 
-from django.db import models
-from django.conf import settings
 from decimal import Decimal
 
-from django.db import models
-from django.conf import settings
 
 class Booking(models.Model):
     mentor = models.ForeignKey('ProfessionalCompleteProfile', on_delete=models.CASCADE)
@@ -156,3 +152,65 @@ class Booking(models.Model):
                 name='unique_active_booking'
             )
         ]
+
+
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+class Event(models.Model):
+    STATUS_CHOICES = [
+        ('upcoming', 'Upcoming'),
+        ('ongoing', 'Ongoing'),
+        ('ended', 'Ended'),
+    ]
+
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    location = models.CharField(max_length=200)
+    date = models.DateTimeField()
+    attendees_count = models.IntegerField(default=0)
+    is_virtual = models.BooleanField(default=False)
+    is_featured = models.BooleanField(default=False)
+    image = models.ImageField(upload_to='events/', null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    organizer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='organized_events', null=True, blank=True)
+    max_attendees = models.IntegerField(default=0)
+    registration_deadline = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-date']
+
+    def register_attendee(self, user):
+        if self.attendees.count() < self.max_attendees:
+            EventAttendee.objects.create(event=self, user=user)
+            self.attendees_count = self.attendees.count()
+            self.save()
+            return True
+        return False
+
+class EventTag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    events = models.ManyToManyField(Event, related_name='tags')
+
+    def __str__(self):
+        return self.name
+
+class EventAttendee(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='attendees')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    registered_at = models.DateTimeField(auto_now_add=True)
+    attendance_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('registered', 'Registered'),
+            ('attended', 'Attended'),
+            ('cancelled', 'Cancelled')
+        ],
+        default='registered'
+    )
+
+    class Meta:
+        unique_together = ['event', 'user']
