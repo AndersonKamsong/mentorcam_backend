@@ -1,46 +1,70 @@
-from venv import logger
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework_simplejwt.tokens import RefreshToken, TokenError
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from django.contrib.auth import authenticate
-from .serializers import BookingSerializer, RegisterSerializer, UserSerializer
-from django.core.exceptions import ValidationError
-from django.contrib.auth import logout
-from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+# Standard library imports
 import random
+import uuid
 from datetime import timedelta
+import logging
+
+# Third-party library imports
 import yagmail
-import random
 from django.core.cache import cache
-from rest_framework import status, viewsets
+from django.core.mail import send_mail
+from django.core.exceptions import ValidationError, ObjectDoesNotExist
+from django.db import transaction
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from django.http import FileResponse
+from django.conf import settings
+from django.contrib.auth import authenticate, logout, get_user_model
 from django.contrib.auth.password_validation import validate_password
-from django.contrib.auth import get_user_model
+from django_filters.rest_framework import DjangoFilterBackend
+
+# Django REST framework imports
+from rest_framework import viewsets, status, filters
+from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+# JWT authentication imports
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+
+# Local application imports
+from .models import (
+    Booking, 
+    CustomUser, 
+    ProfessionalCompleteProfile, 
+    ProfessionalRating, 
+    Event, 
+    EventTag, 
+    EventAttendee
+)
 from .serializers import (
+    BookingSerializer, 
+    RegisterSerializer, 
+    UserSerializer, 
     PasswordResetRequestSerializer, 
     VerifyResetCodeSerializer, 
-    PasswordResetConfirmSerializer
+    PasswordResetConfirmSerializer, 
+    ContactSerializer, 
+    NewsletterSerializer, 
+    PublicMentorSearchSerializer, 
+    ProfessionalCompleteProfileSerializer, 
+    RatingSerializer, 
+    ProfessionalListSerializer, 
+    EventSerializer, 
+    EventTagSerializer, 
+    EventAttendeeSerializer
 )
+from .utils import generate_pdf_receipt
 
-from rest_framework.views import APIView
-from .serializers import ContactSerializer, NewsletterSerializer
-from django.core.mail import send_mail
-from django.conf import settings
-from rest_framework.decorators import action
-from django.shortcuts import get_object_or_404
-from .models import Booking, CustomUser
-from rest_framework.permissions import BasePermission
-from django.db.models import Q
-from rest_framework_simplejwt.tokens import RefreshToken, TokenError
-from django.core.exceptions import ObjectDoesNotExist
-from django.contrib.auth import logout
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework import viewsets
-from .models import ProfessionalCompleteProfile
-from .serializers import ProfessionalCompleteProfileSerializer
-from backend import serializers
+# External SDK imports
+from campay.sdk import Client as CamPayClient
 
+# Logging configuration
+from venv import logger
 
 
 CustomUser = get_user_model()
@@ -421,14 +445,7 @@ class UserProfileView(APIView):
         serializer = ProfessionalProfileSerializer(profile)
         return Response(serializer.data)
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import AllowAny
-from django.db.models import Q
-from django.http import FileResponse
-from .models import ProfessionalCompleteProfile
-from .serializers import PublicMentorSearchSerializer, ProfessionalCompleteProfileSerializer
+
 
 class PublicProfessionalProfileSearchView(APIView):
     permission_classes = [AllowAny]
@@ -602,13 +619,6 @@ class FileUploadView(APIView):
             status=status.HTTP_200_OK
         )
 
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from django.db.models import Q
-from .models import ProfessionalRating
-from .serializers import RatingSerializer, ProfessionalListSerializer
 
 @api_view(['GET'])
 def list_professionals(request):
@@ -662,18 +672,6 @@ class RatingViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(rated_by=self.request.user)
 
-
-from rest_framework import viewsets, status
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework.decorators import action
-from django.conf import settings
-from django.db import transaction
-from campay.sdk import Client as CamPayClient
-import uuid
-from .utils import generate_pdf_receipt
-import logging
-from django.db.utils import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -816,13 +814,6 @@ class BookingViewSet(viewsets.ModelViewSet):
                 'error': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
         
-# views.py
-from rest_framework import viewsets, filters, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from django_filters.rest_framework import DjangoFilterBackend
-from .models import Event, EventTag, EventAttendee
-from .serializers import EventSerializer, EventTagSerializer, EventAttendeeSerializer
 
 class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all()
@@ -896,3 +887,59 @@ class EventViewSet(viewsets.ModelViewSet):
                 {'error': 'Attendee not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
+        
+
+from rest_framework import viewsets, filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import Job, JobApplication
+from .serializers import JobSerializer, JobApplicationSerializer
+
+class JobViewSet(viewsets.ModelViewSet):
+    serializer_class = JobSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['type', 'location', 'is_active']
+    search_fields = ['title', 'company', 'location', 'description']
+
+    def get_queryset(self):
+        return Job.objects.filter(is_active=True).order_by('-posted_date')
+
+    def perform_create(self, serializer):
+        serializer.save(posted_by=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def apply(self, request, pk=None):
+        job = self.get_object()
+        
+        # Check if already applied
+        existing_application = JobApplication.objects.filter(
+            job=job,
+            applicant=request.user
+        ).first()
+        
+        if existing_application:
+            return Response(
+                {'error': 'Already applied for this job'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create application
+        application = JobApplication.objects.create(
+            job=job,
+            applicant=request.user,
+            cover_letter=request.data.get('cover_letter', ''),
+            resume=request.data.get('resume')
+        )
+        
+        serializer = JobApplicationSerializer(application)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def applicants(self, request, pk=None):
+        job = self.get_object()
+        applications = job.applications.all()
+        serializer = JobApplicationSerializer(applications, many=True)
+        return Response(serializer.data)

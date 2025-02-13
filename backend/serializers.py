@@ -251,3 +251,41 @@ class EventSerializer(serializers.ModelSerializer):
         event = Event.objects.create(**validated_data)
         event.tags.set(EventTag.objects.filter(id__in=tag_ids))
         return event
+    
+from .models import Job, JobApplication
+
+class JobSerializer(serializers.ModelSerializer):
+    applicants_count = serializers.SerializerMethodField()
+    posted_date_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Job
+        fields = ['id', 'title', 'company', 'type', 'location', 'salary', 
+                 'description', 'requirements', 'skills', 'posted_date', 
+                 'is_active', 'applicants_count', 'posted_date_display']
+        read_only_fields = ['posted_date', 'posted_by']
+
+    def get_applicants_count(self, obj):
+        return obj.applications.count()
+
+    def get_posted_date_display(self, obj):
+        from django.utils import timezone
+        from datetime import datetime, timedelta
+        
+        now = timezone.now()
+        diff = now - obj.posted_date
+
+        if diff < timedelta(hours=24):
+            hours = diff.seconds // 3600
+            return f"{hours} hours ago"
+        elif diff < timedelta(days=7):
+            days = diff.days
+            return f"{days} days ago"
+        else:
+            return obj.posted_date.strftime("%B %d, %Y")
+
+class JobApplicationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JobApplication
+        fields = ['id', 'job', 'applicant', 'applied_date', 'status', 'resume', 'cover_letter']
+        read_only_fields = ['applied_date', 'status']

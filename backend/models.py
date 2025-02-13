@@ -214,3 +214,39 @@ class EventAttendee(models.Model):
 
     class Meta:
         unique_together = ['event', 'user']
+
+class Job(models.Model):
+    JOB_TYPES = [
+        ('Full-time', 'Full-time'),
+        ('Contract', 'Contract'),
+        ('Remote', 'Remote'),
+    ]
+
+    title = models.CharField(max_length=200)
+    company = models.CharField(max_length=200)
+    type = models.CharField(max_length=20, choices=JOB_TYPES)
+    location = models.CharField(max_length=200)
+    salary = models.CharField(max_length=100)
+    description = models.TextField()
+    requirements = models.TextField(blank=True)
+    skills = models.JSONField()  # Store as JSON array
+    posted_date = models.DateTimeField(auto_now_add=True)
+    posted_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.title} at {self.company}"
+
+class JobApplication(models.Model):
+    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='applications')
+    applicant = models.ForeignKey(User, on_delete=models.CASCADE)
+    applied_date = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, default='pending')
+    resume = models.FileField(upload_to='resumes/', null=True, blank=True)
+    cover_letter = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = ('job', 'applicant')
+
+    def __str__(self):
+        return f"{self.applicant.username} - {self.job.title}"
