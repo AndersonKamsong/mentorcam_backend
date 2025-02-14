@@ -1,62 +1,67 @@
 # Standard library imports
+import logging
 import random
 import uuid
 from datetime import timedelta
-import logging
 
 # Third-party library imports
 import yagmail
+from django.conf import settings
+from django.contrib.auth import authenticate, get_user_model, logout
+from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.mail import send_mail
-from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import Q
-from django.shortcuts import get_object_or_404
 from django.http import FileResponse
-from django.conf import settings
-from django.contrib.auth import authenticate, logout, get_user_model
-from django.contrib.auth.password_validation import validate_password
+from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 
 # Django REST framework imports
-from rest_framework import viewsets, status, filters
-from rest_framework.decorators import api_view, permission_classes, action
-from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 # JWT authentication imports
-from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
+from rest_framework_simplejwt.tokens import RefreshToken
 
 # Local application imports
 from .models import (
-    Booking, 
-    CustomUser, 
-    ProfessionalCompleteProfile, 
-    ProfessionalRating, 
-    Event, 
-    EventTag, 
-    EventAttendee
+    Booking,
+    CustomUser,
+    Event,
+    EventAttendee,
+    EventTag,
+    Job,
+    JobApplication,
+    ProfessionalCompleteProfile,
+    ProfessionalRating,
 )
 from .serializers import (
-    BookingSerializer, 
-    RegisterSerializer, 
-    UserSerializer, 
-    PasswordResetRequestSerializer, 
-    VerifyResetCodeSerializer, 
-    PasswordResetConfirmSerializer, 
-    ContactSerializer, 
-    NewsletterSerializer, 
-    PublicMentorSearchSerializer, 
-    ProfessionalCompleteProfileSerializer, 
-    RatingSerializer, 
-    ProfessionalListSerializer, 
-    EventSerializer, 
-    EventTagSerializer, 
-    EventAttendeeSerializer
+    BookingSerializer,
+    ContactSerializer,
+    EventAttendeeSerializer,
+    EventAttendeeWithUserDetailsSerializer,
+    EventSerializer,
+    EventTagSerializer,
+    JobApplicationSerializer,
+    JobSerializer,
+    NewsletterSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
+    ProfessionalCompleteProfileSerializer,
+    ProfessionalListSerializer,
+    PublicMentorSearchSerializer,
+    RatingSerializer,
+    RegisterSerializer,
+    UserSerializer,
+    VerifyResetCodeSerializer,
 )
 from .utils import generate_pdf_receipt
 
@@ -65,19 +70,6 @@ from campay.sdk import Client as CamPayClient
 
 # Logging configuration
 from venv import logger
-from .serializers import (
-    EventSerializer, 
-    EventTagSerializer, 
-    EventAttendeeSerializer,
-    EventAttendeeWithUserDetailsSerializer
-)
-from rest_framework import viewsets, filters, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django_filters.rest_framework import DjangoFilterBackend
-from .models import Job, JobApplication
-from .serializers import JobSerializer, JobApplicationSerializer
 
 
 CustomUser = get_user_model()
@@ -1078,3 +1070,4 @@ class JobViewSet(viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        
