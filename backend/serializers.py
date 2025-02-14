@@ -1,10 +1,27 @@
+# Logging configuration
 from venv import logger
-from rest_framework import serializers
-from .models import Booking, CustomUser
-from .models import Contact, Newsletter
-from .models import ProfessionalCompleteProfile
+
+# Django core imports
 from django.contrib.auth import get_user_model
-from .models import ProfessionalCompleteProfile
+
+# Django REST framework imports
+from rest_framework import serializers
+
+# Local application imports
+from .models import (
+    Booking, 
+    CustomUser, 
+    Contact, 
+    Newsletter, 
+    ProfessionalCompleteProfile, 
+    ProfessionalRating, 
+    Event, 
+    EventTag, 
+    EventAttendee, 
+    Job, 
+    JobApplication
+)
+
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -61,7 +78,6 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         if data['new_password'] != data['confirm_password']:
             raise serializers.ValidationError("Passwords do not match")
         return data
-
 
 class ContactSerializer(serializers.ModelSerializer):
     class Meta:
@@ -134,8 +150,6 @@ class PublicMentorSearchSerializer(serializers.ModelSerializer):
         ]
 
 
-from .models import ProfessionalRating, ProfessionalCompleteProfile
-
 class ProfessionalListSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='user.full_name')
     average_rating = serializers.SerializerMethodField()
@@ -184,9 +198,6 @@ class RatingSerializer(serializers.ModelSerializer):
         return data
 
 
-from rest_framework import serializers
-from .models import Booking
-
 class BookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
@@ -211,9 +222,6 @@ class BookingSerializer(serializers.ModelSerializer):
         validated_data['student'] = self.context['request'].user
         return super().create(validated_data)
     
-
-from rest_framework import serializers
-from .models import Event, EventTag, EventAttendee
 
 class EventTagSerializer(serializers.ModelSerializer):
     class Meta:
@@ -265,8 +273,6 @@ class EventAttendeeWithUserDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = EventAttendee
         fields = ['id', 'user', 'user_name', 'registered_at', 'attendance_status']
-
-from .models import Job, JobApplication
 
 class JobSerializer(serializers.ModelSerializer):
     applicants_count = serializers.SerializerMethodField()
