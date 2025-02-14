@@ -65,6 +65,19 @@ from campay.sdk import Client as CamPayClient
 
 # Logging configuration
 from venv import logger
+from .serializers import (
+    EventSerializer, 
+    EventTagSerializer, 
+    EventAttendeeSerializer,
+    EventAttendeeWithUserDetailsSerializer
+)
+from rest_framework import viewsets, filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import Job, JobApplication
+from .serializers import JobSerializer, JobApplicationSerializer
 
 
 CustomUser = get_user_model()
@@ -868,7 +881,15 @@ class EventViewSet(viewsets.ModelViewSet):
     def attendees(self, request, pk=None):
         event = self.get_object()
         attendees = event.attendees.all()
-        serializer = EventAttendeeSerializer(attendees, many=True)
+        
+        # Check if we should include detailed user information
+        include_user_details = request.query_params.get('include_user_details', 'false') == 'true'
+        
+        if include_user_details:
+            serializer = EventAttendeeWithUserDetailsSerializer(attendees, many=True)
+        else:
+            serializer = EventAttendeeSerializer(attendees, many=True)
+        
         return Response(serializer.data)
 
     @action(detail=True, methods=['patch'])
@@ -888,14 +909,6 @@ class EventViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-
-from rest_framework import viewsets, filters, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django_filters.rest_framework import DjangoFilterBackend
-from .models import Job, JobApplication
-from .serializers import JobSerializer, JobApplicationSerializer
 
 class JobViewSet(viewsets.ModelViewSet):
     serializer_class = JobSerializer

@@ -251,7 +251,21 @@ class EventSerializer(serializers.ModelSerializer):
         event = Event.objects.create(**validated_data)
         event.tags.set(EventTag.objects.filter(id__in=tag_ids))
         return event
+
+
+class UserDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = get_user_model()
+        fields = ['id', 'email', 'full_name', 'phone_number', 'user_type', 'location', 'profile_picture']
+
+class EventAttendeeWithUserDetailsSerializer(serializers.ModelSerializer):
+    user = UserDetailSerializer(read_only=True)
+    user_name = serializers.CharField(source='user.full_name', read_only=True)
     
+    class Meta:
+        model = EventAttendee
+        fields = ['id', 'user', 'user_name', 'registered_at', 'attendance_status']
+
 from .models import Job, JobApplication
 
 class JobSerializer(serializers.ModelSerializer):
