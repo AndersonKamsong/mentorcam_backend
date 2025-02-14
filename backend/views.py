@@ -953,6 +953,128 @@ class JobViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def applicants(self, request, pk=None):
         job = self.get_object()
-        applications = job.applications.all()
-        serializer = JobApplicationSerializer(applications, many=True)
-        return Response(serializer.data)
+        applications = job.applications.all().select_related('applicant')
+        data = []
+        
+        for application in applications:
+            applicant = application.applicant
+            data.append({
+                'id': application.id,
+                'job_id': job.id,
+                'status': application.status,
+                'applied_date': application.applied_date,
+                'cover_letter': application.cover_letter,
+                'resume': request.build_absolute_uri(application.resume.url) if application.resume else None,
+                'applicant': {
+                    'id': applicant.id,
+                    'full_name': applicant.full_name,
+                    'email': applicant.email,
+                    'location': applicant.location,
+                    'phone_number': applicant.phone_number
+                }
+            })
+        
+        return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def applications(self, request):
+        """Get all applications with job and applicant details"""
+        applications = JobApplication.objects.select_related(
+            'job', 
+            'applicant'
+        ).all().order_by('-applied_date')
+        
+        data = []
+        for application in applications:
+            data.append({
+                'id': application.id,
+                'job': {
+                    'id': application.job.id,
+                    'title': application.job.title,
+                    'company': application.job.company,
+                    'type': application.job.type,
+                },
+                'applicant': {
+                    'id': application.applicant.id,
+                    'full_name': application.applicant.full_name,
+                    'email': application.applicant.email,
+                    'location': application.applicant.location,
+                    'phone_number': application.applicant.phone_number
+                },
+                'status': application.status,
+                'applied_date': application.applied_date,
+                'resume': request.build_absolute_uri(application.resume.url) if application.resume else None,
+                'cover_letter': application.cover_letter
+            })
+        
+        return Response(data)
+
+    @action(detail=True, methods=['post'])
+    def send_email(self, request, pk=None):
+        try:
+            email = request.data.get('email')
+            subject = request.data.get('subject')
+            message = request.data.get('message')
+            
+            if not all([email, subject, message]):
+                return Response(
+                    {'error': 'Email, subject, and message are required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                # First try using yagmail
+                username = "yvangodimomo@gmail.com"
+                password = "pzls apph esje cgdl"
+                yag = yagmail.SMTP(username, password)
+                
+                # Send email
+                yag.send(
+                    to=email,
+                    subject=subject,
+                    contents=message
+                )
+            except:
+                # Fallback to Django's send_mail
+                send_mail(
+                    subject,
+                    message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [email],
+                    fail_silently=False,
+                )
+            
+            return Response({'status': 'email sent'})
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['patch'])
+    def update_application(self, request, pk=None):
+        try:
+            application_id = request.data.get('application_id')
+            new_status = request.data.get('status')
+            
+            if not all([application_id, new_status]):
+                return Response(
+                    {'error': 'Application ID and status are required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            application = JobApplication.objects.get(id=application_id, job_id=pk)
+            application.status = new_status
+            application.save()
+            
+            return Response({'status': 'updated'})
+        except JobApplication.DoesNotExist:
+            return Response(
+                {'error': 'Application not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
