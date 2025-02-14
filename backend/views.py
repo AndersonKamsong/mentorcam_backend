@@ -699,11 +699,15 @@ class BookingViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         try:
-            data = request.data
+            data = request.data.copy()  # Create a mutable copy
             logger.info(f"Received booking data: {data}")
             
+            # Convert mentorId to mentor for serializer compatibility
+            if 'mentorId' in data:
+                data['mentor'] = data.pop('mentorId')
+            
             # Validate required fields
-            required_fields = ['mentorId', 'studentName', 'studentEmail', 'mentorName', 
+            required_fields = ['mentor', 'studentName', 'studentEmail', 'mentorName', 
                              'phoneNumber', 'amount', 'planType', 'domain', 'subdomains']
             
             missing_fields = [field for field in required_fields if not data.get(field)]
@@ -715,7 +719,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             # Check if user already has an active booking
             existing_booking = Booking.objects.filter(
                 student=request.user,
-                mentor_id=data['mentorId'],
+                mentor_id=data['mentor'],
                 status__in=['pending', 'confirmed']
             ).first()
 
@@ -747,7 +751,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             if payment_response.get('status') == 'SUCCESSFUL':
                 # Prepare booking data
                 booking_data = {
-                    'mentor_id': data['mentorId'],  # This will now match with the serializer
+                    'mentor': data['mentor'],
                     'student_name': data['studentName'],
                     'student_email': data['studentEmail'],
                     'mentor_name': data['mentorName'],

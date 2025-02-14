@@ -260,7 +260,6 @@ class EventSerializer(serializers.ModelSerializer):
         event.tags.set(EventTag.objects.filter(id__in=tag_ids))
         return event
 
-
 class UserDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
