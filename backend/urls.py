@@ -14,6 +14,7 @@ router.register(r'jobs', JobViewSet, basename='job')
 
 
 
+
 urlpatterns = [
     # Authentication URLs
     path('register/', views.register_user, name='register'),

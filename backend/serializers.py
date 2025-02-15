@@ -199,9 +199,18 @@ class RatingSerializer(serializers.ModelSerializer):
 
 
 class BookingSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(read_only=True)
+    student_email = serializers.CharField(read_only=True)
+    booking_date = serializers.DateTimeField(read_only=True)
+
     class Meta:
         model = Booking
-        fields = '__all__'
+        fields = [
+            'id', 'mentor', 'student', 'student_name', 'student_email', 
+            'mentor_name', 'booking_date', 'phone_number', 'amount',
+            'transaction_id', 'plan_type', 'domain', 'subdomains',
+            'status', 'payment_reference', 'pdf_receipt'
+        ]
         read_only_fields = ('student', 'status', 'payment_reference', 'pdf_receipt')
 
     def validate(self, data):
@@ -211,7 +220,7 @@ class BookingSerializer(serializers.ModelSerializer):
         if 'mentor' not in data:
             raise serializers.ValidationError({"mentor": "This field is required."})
             
-        # Add any additional validation here
+        # Ensure mentor_name is provided
         if not data.get('mentor_name'):
             raise serializers.ValidationError({"mentor_name": "This field is required."})
             
@@ -308,3 +317,5 @@ class JobApplicationSerializer(serializers.ModelSerializer):
         model = JobApplication
         fields = ['id', 'job', 'applicant', 'applied_date', 'status', 'resume', 'cover_letter']
         read_only_fields = ['applied_date', 'status']
+
+

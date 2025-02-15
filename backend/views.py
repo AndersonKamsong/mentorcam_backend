@@ -1,5 +1,6 @@
 # Standard library imports
 import logging
+import os
 import random
 import uuid
 from datetime import timedelta
@@ -12,9 +13,9 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.mail import send_mail
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -692,9 +693,13 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if hasattr(user, 'professional_profile'):
-            return Booking.objects.filter(mentor__user=user)
-        return Booking.objects.filter(student=user)
+        if user.user_type == 'professional' and hasattr(user, 'professional_complete_profile'):
+            # Return bookings where the mentor profile belongs to the logged-in professional user
+            return Booking.objects.filter(mentor=user.professional_complete_profile)
+        elif user.user_type == 'amateur':
+            # Return bookings made by the amateur user
+            return Booking.objects.filter(student=user)
+        return Booking.objects.none()  # Return empty queryset for other user types
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -822,6 +827,20 @@ class BookingViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'], url_path='receipt')
+    def download_receipt(self, request, pk=None):
+        booking = self.get_object()
+        if not booking.pdf_receipt:
+            return Response({'error': 'No receipt available'}, status=status.HTTP_404_NOT_FOUND)
+        
+        file_path = booking.pdf_receipt.path
+        if os.path.exists(file_path):
+            with open(file_path, 'rb') as f:
+                response = HttpResponse(f, content_type='application/pdf')
+                response['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_path)}"'
+                return response
+        return Response({'error': 'Receipt file not found'}, status=status.HTTP_404_NOT_FOUND)
         
 
 class EventViewSet(viewsets.ModelViewSet):
