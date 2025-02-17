@@ -753,6 +753,7 @@ class BookingViewSet(viewsets.ModelViewSet):
 
             logger.info(f"Payment response: {payment_response}")
 
+
             if payment_response.get('status') == 'SUCCESSFUL':
                 # Prepare booking data
                 booking_data = {
