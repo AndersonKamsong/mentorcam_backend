@@ -139,7 +139,7 @@ class Booking(models.Model):
         ],
         default='pending'
     )
-    payment_reference = models.CharField(max_length=100, unique=True)
+    payment_reference = models.CharField(max_length=100)
     pdf_receipt = models.FileField(upload_to='receipts/', null=True, blank=True)
 
     class Meta:

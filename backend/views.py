@@ -767,7 +767,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                     'domain': data['domain'],
                     'subdomains': data['subdomains'],
                     'status': 'confirmed',
-                    'payment_reference': payment_reference
+                    'payment_reference': payment_response.get('external_reference')
                 }
 
                 logger.info(f"Creating booking with data: {booking_data}")
